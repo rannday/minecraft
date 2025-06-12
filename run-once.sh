@@ -1,0 +1,33 @@
+#!/bin/bash
+
+set -e
+trap 'echo "Interrupted. Shutting down." >&2; exit 1' INT TERM
+
+SERVER_DIR="/opt/minecraft/server/vanilla"
+JAR="$SERVER_DIR/server.jar"
+ARGS_FILE="$SERVER_DIR/jvm.args"
+
+if ! id minecraft &>/dev/null; then
+  echo "Error: 'minecraft' user does not exist."
+  exit 1
+fi
+
+if [ ! -f "$JAR" ]; then
+  echo "Error: server.jar not found at $JAR"
+  exit 1
+fi
+
+if [ -f "$ARGS_FILE" ]; then
+  JVM_ARGS="$(<"$ARGS_FILE")"
+  echo "Using JVM args from $ARGS_FILE:"
+  echo "$JVM_ARGS"
+else
+  JVM_ARGS=""
+  echo "Warning: No jvm.args file found — using default JVM settings."
+fi
+
+echo "Starting Minecraft server manually..."
+echo "Directory: $SERVER_DIR"
+echo "Command: java $JVM_ARGS -jar server.jar nogui"
+
+sudo -u minecraft bash -c "cd $SERVER_DIR && exec java $JVM_ARGS -jar server.jar nogui"
