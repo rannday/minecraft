@@ -50,3 +50,8 @@ else
     exit 1
   fi
 fi
+
+sudo chown minecraft:minecraft "$jar_name"
+sudo chmod 644 "$jar_name"
+
+sudo -u minecraft ln -sf "$(realpath "$jar_name")" /opt/minecraft/server/vanilla/server.jar
