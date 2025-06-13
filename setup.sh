@@ -6,58 +6,13 @@ trap 'echo "Setup interrupted. Exiting."; exit 1' INT TERM
 sudo apt update
 sudo apt upgrade -y
 
-sudo apt install -y curl wget gnupg software-properties-common tmux jq git
+sudo apt install -y curl tmux jq git
 
-#if [ ! -f /usr/share/keyrings/adoptium.gpg ]; then
-#  echo "Adding Adoptium GPG key..."
-#  wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor | sudo tee /usr/share/keyrings/adoptium.gpg > /dev/null
-#else
-#  echo "Adoptium GPG key already present."
-#fi
-#
-#if [ ! -f /etc/apt/sources.list.d/adoptium.list ]; then
-#  echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb bookworm main" | sudo tee /etc/apt/sources.list.d/adoptium.list
-#fi
-
-# Set up GraalVM key and repository
-if [ ! -f /etc/apt/keyrings/graalvm.gpg ]; then
-  echo "Adding GraalVM GPG key..."
-  sudo mkdir -p /etc/apt/keyrings
-  curl -fsSL https://packages.graalvm.org/gpg.key | gpg --dearmor | sudo tee /etc/apt/keyrings/graalvm.gpg > /dev/null
+cd "$(dirname "$0")"
+if [ -f ./install-java.sh ]; then
+  ./install-java.sh
 else
-  echo "GraalVM GPG key already present."
-fi
-
-if [ ! -f /etc/apt/sources.list.d/graalvm.list ]; then
-  echo "Adding GraalVM APT repository..."
-  echo "deb [signed-by=/etc/apt/keyrings/graalvm.gpg] https://packages.graalvm.org/deb stable main" | sudo tee /etc/apt/sources.list.d/graalvm.list
-fi
-
-sudo apt update
-#sudo apt install -y temurin-21-jdk
-sudo apt install -y graalvm-community-jdk-21
-
-GRAALVM_PATH="/usr/lib/jvm/graalvm-community-openjdk-21"
-
-if [ ! -d "$GRAALVM_PATH" ]; then
-  echo "Error: GraalVM install directory not found at $GRAALVM_PATH"
-  exit 1
-fi
-
-# Check if current java is GraalVM
-if java -version 2>&1 | grep -q "GraalVM"; then
-  echo "GraalVM is already the default Java."
-elif "$GRAALVM_PATH/bin/java" -version 2>&1 | grep -q "GraalVM"; then
-  echo "GraalVM installed but not set — applying update-alternatives..."
- 
-  sudo update-alternatives --install /usr/bin/java java "$GRAALVM_PATH/bin/java" 100
-  sudo update-alternatives --install /usr/bin/javac javac "$GRAALVM_PATH/bin/javac" 100
-
-  sudo update-alternatives --set java "$GRAALVM_PATH/bin/java"
-  sudo update-alternatives --set javac "$GRAALVM_PATH/bin/javac"
-else
-  echo "Warning: GraalVM does not appear to be installed correctly."
-  exit 1
+  echo "Warning: download.sh not found in $(pwd)"
 fi
 
 if ! id minecraft &>/dev/null; then
