@@ -3,6 +3,9 @@
 set -e
 trap 'echo "Setup interrupted. Exiting."; exit 1' INT TERM
 
+MOTD="Minecraft Server"
+PORT=25565
+
 sudo apt update
 sudo apt upgrade -y
 
@@ -42,6 +45,24 @@ fi
 eula_file="/opt/minecraft/server/vanilla/eula.txt"
 if ! grep -q 'eula=true' "$eula_file" 2>/dev/null; then
   sudo -u minecraft bash -c 'echo "eula=true" > /opt/minecraft/server/vanilla/eula.txt'
+fi
+
+properties_file="/opt/minecraft/server/vanilla/server.properties"
+if [ ! -f "$properties_file" ]; then
+  echo "Creating default server.properties at $properties_file..."
+  sudo -u minecraft tee "$properties_file" > /dev/null <<EOF
+enforce-whitelist=true
+force-gamemode=true
+gamemode=survival
+max-players=20
+online-mode=true
+pvp=true
+server-port=${PORT}
+white-list=true
+motd=${MOTD}
+EOF
+else
+  echo "server.properties already exists — skipping."
 fi
 
 jvm_args_file="/opt/minecraft/server/vanilla/jvm.args"
