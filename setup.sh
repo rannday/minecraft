@@ -22,6 +22,14 @@ else
   echo "'minecraft' user already exists."
 fi
 
+# Ensure /opt/minecraft exists and has proper ownership
+if [ ! -d /opt/minecraft ]; then
+  echo "Creating /opt/minecraft..."
+  sudo mkdir -p /opt/minecraft
+fi
+
+sudo chown -R minecraft:minecraft /opt/minecraft
+
 sudo -u minecraft mkdir -p /opt/minecraft/server/vanilla
 
 cd "$(dirname "$0")"
