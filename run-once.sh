@@ -18,16 +18,14 @@ if [ ! -f "$JAR" ]; then
 fi
 
 if [ -f "$ARGS_FILE" ]; then
-  JVM_ARGS="$(<"$ARGS_FILE")"
   echo "Using JVM args from $ARGS_FILE:"
-  echo "$JVM_ARGS"
+  cat "$ARGS_FILE"
 else
-  JVM_ARGS=""
   echo "Warning: No jvm.args file found — using default JVM settings."
 fi
 
 echo "Starting Minecraft server manually..."
 echo "Directory: $SERVER_DIR"
-echo "Command: java $JVM_ARGS -jar server.jar nogui"
+echo "Command: java @$ARGS_FILE -jar server.jar nogui"
 
-sudo -u minecraft bash -c "cd $SERVER_DIR && exec java $JVM_ARGS -jar server.jar nogui"
+sudo -u minecraft bash -c "cd \"$SERVER_DIR\" && exec java @$ARGS_FILE -jar server.jar nogui"
