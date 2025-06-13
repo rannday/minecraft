@@ -3,18 +3,22 @@
 set -e
 trap 'echo "Script interrupted. Exiting."; exit 1' INT TERM
 
+# Constants
+SERVER_DIR="/opt/minecraft/server/vanilla"
+link_path="$SERVER_DIR/server.jar"
+
+# Ensure user and directory exist
 if ! id minecraft &>/dev/null; then
   echo "Error: 'minecraft' user does not exist. Run setup.sh first."
   exit 1
 fi
 
-link_path="/opt/minecraft/server/vanilla/server.jar"
-
-if [ ! -d "$(dirname "$link_path")" ]; then
-  echo "Error: Target directory $(dirname "$link_path") does not exist."
+if [ ! -d "$SERVER_DIR" ]; then
+  echo "Error: Target directory $SERVER_DIR does not exist."
   exit 1
 fi
 
+# Check dependencies
 for cmd in curl jq sha1sum realpath; do
   if ! command -v "$cmd" >/dev/null 2>&1; then
     echo "Error: $cmd is not installed. Aborting."
@@ -22,9 +26,8 @@ for cmd in curl jq sha1sum realpath; do
   fi
 done
 
+# Get latest version info from Mojang
 manifest_url="https://piston-meta.mojang.com/mc/game/version_manifest.json"
-
-# Get the latest stable version
 latest_version=$(curl -s "$manifest_url" | jq -r '.latest.release')
 version_url=$(curl -s "$manifest_url" | jq -r --arg ver "$latest_version" '.versions[] | select(.id == $ver) | .url')
 
@@ -34,7 +37,6 @@ if [ -z "$latest_version" ] || [ -z "$version_url" ]; then
 fi
 
 metadata=$(curl -s "$version_url")
-
 server_jar_url=$(echo "$metadata" | jq -r '.downloads.server.url')
 expected_sha1=$(echo "$metadata" | jq -r '.downloads.server.sha1')
 
@@ -44,13 +46,15 @@ if [ -z "$server_jar_url" ] || [ -z "$expected_sha1" ]; then
 fi
 
 jar_name="minecraft_server_${latest_version}.jar"
+jar_path="$SERVER_DIR/$jar_name"
 
+# Download and verify JAR
 download_and_verify() {
-  echo "Downloading $jar_name..."
-  curl -s -o "$jar_name" "$server_jar_url"
+  echo "Downloading $jar_name into $SERVER_DIR..."
+  curl -s -o "$jar_path" "$server_jar_url"
 
   echo "Verifying SHA1 checksum..."
-  actual_sha1=$(sha1sum "$jar_name" | awk '{print $1}')
+  actual_sha1=$(sha1sum "$jar_path" | awk '{print $1}')
 
   if [ "$expected_sha1" != "$actual_sha1" ]; then
     echo "Checksum mismatch. Expected: $expected_sha1, Got: $actual_sha1"
@@ -61,15 +65,15 @@ download_and_verify() {
   return 0
 }
 
-# Check if file already exists and is valid
-if [ -f "$jar_name" ]; then
-  echo "$jar_name already exists. Verifying..."
-  actual_sha1=$(sha1sum "$jar_name" | awk '{print $1}')
+# Check existing file or download
+if [ -f "$jar_path" ]; then
+  echo "$jar_name already exists in $SERVER_DIR. Verifying..."
+  actual_sha1=$(sha1sum "$jar_path" | awk '{print $1}')
   if [ "$expected_sha1" == "$actual_sha1" ]; then
     echo "Existing file is valid. No download needed."
   else
     echo "Existing file failed checksum. Re-downloading..."
-    rm -f "$jar_name"
+    rm -f "$jar_path"
     if ! download_and_verify; then
       echo "Re-download failed. Aborting."
       exit 1
@@ -82,29 +86,26 @@ else
   fi
 fi
 
-# Fix permissions
-sudo chown minecraft:minecraft "$jar_name"
-sudo chmod 644 "$jar_name"
+# Set ownership and permissions
+sudo chown minecraft:minecraft "$jar_path"
+sudo chmod 644 "$jar_path"
 
-# Resolve the full path to the JAR
-jar_path="$(realpath "$jar_name")"
-
-# Check if symlink exists and points to the right target
+# Symlink management
 if [ -L "$link_path" ]; then
   current_target=$(readlink -f "$link_path")
   if [ "$current_target" == "$jar_path" ]; then
-    echo "Symlink already exists and is correct: $link_path -> $jar_path"
+    echo "Symlink already correct: $link_path -> $jar_path"
   else
-    echo "Symlink exists but points to $current_target — fixing..."
+    echo "Fixing incorrect symlink (was pointing to $current_target)..."
     sudo -u minecraft ln -sf "$jar_path" "$link_path"
-    echo "Updated symlink: $link_path -> $jar_path"
+    echo "Symlink updated: $link_path -> $jar_path"
   fi
 else
-  echo "Symlink does not exist — creating..."
+  echo "Creating symlink: $link_path -> $jar_path"
   sudo -u minecraft ln -sf "$jar_path" "$link_path"
-  echo "Created symlink: $link_path -> $jar_path"
 fi
 
+# Summary
 echo "Done."
 echo "JAR: $jar_path"
 echo "Symlink: $link_path -> $(readlink -f "$link_path")"
