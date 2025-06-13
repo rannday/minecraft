@@ -1,15 +1,66 @@
-#!/bin/bash
-
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 trap 'echo "Setup interrupted. Exiting."; exit 1' INT TERM
 
 MOTD="Minecraft Server"
 PORT=25565
 RAM="8G"
+GAMEMODE="survival"
+CONF_FILE=""
+
+usage() {
+  cat <<EOF
+Usage: $0 [options]
+
+Options:
+  -f, --config   FILE   Load variables from FILE (shell VAR=VALUE format)
+  --motd         TEXT   Message of the day
+  --port         NUM    Server port
+  --ram          SIZE   Heap size for -Xms / -Xmx (e.g. 8G, 16384M)
+  --gamemode     MODE   Game mode (survival|creative|adventure|spectator)
+  -h, --help            Show this help and exit
+EOF
+  exit 1
+}
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPTS_DIR="${ROOT_DIR}/scripts"
+
+if [[ $# -gt 0 ]]; then
+  # detect -f FILE early to source before other flags
+  for ((i=1; i<=$#; i++)); do
+    case "${!i}" in
+      -f|--config)
+        NEXT_IDX=$((i+1))
+        CONF_FILE="${!NEXT_IDX}"
+        ;;
+    esac
+  done
+fi
+
+if [[ -n "$CONF_FILE" ]]; then
+  if [[ -f "$CONF_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source "$CONF_FILE"
+  else
+    echo "Config file $CONF_FILE not found"; exit 1
+  fi
+fi
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -f|--config)   shift 2 ;;                  # already handled
+    --motd)        MOTD="$2";      shift 2 ;;
+    --port)        PORT="$2";      shift 2 ;;
+    --ram)         RAM="$2";       shift 2 ;;
+    --gamemode)    GAMEMODE="$2";  shift 2 ;;
+    -h|--help)     usage ;;
+    *) echo "Unknown option: $1"; usage ;;
+  esac
+done
 
 sudo apt update
 sudo apt upgrade -y
-
 sudo apt install -y curl tmux jq git
 
 cd "$(dirname "$0")"
