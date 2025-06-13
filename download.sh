@@ -51,9 +51,17 @@ jar_path="$SERVER_DIR/$jar_name"
 # Download and verify JAR
 download_and_verify() {
   echo "Downloading $jar_name into $SERVER_DIR..."
-  curl -s -o "$jar_path" "$server_jar_url"
+  if ! curl -f -s -o "$jar_path" "$server_jar_url"; then
+    echo "Error: Failed to download JAR from $server_jar_url"
+    return 1
+  fi
 
   echo "Verifying SHA1 checksum..."
+  if [ ! -f "$jar_path" ]; then
+    echo "Error: Downloaded file missing at $jar_path"
+    return 1
+  fi
+
   actual_sha1=$(sha1sum "$jar_path" | awk '{print $1}')
 
   if [ "$expected_sha1" != "$actual_sha1" ]; then
