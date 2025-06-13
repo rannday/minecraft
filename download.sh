@@ -51,7 +51,7 @@ jar_path="$SERVER_DIR/$jar_name"
 # Download and verify JAR
 download_and_verify() {
   echo "Downloading $jar_name into $SERVER_DIR..."
-  if ! curl -f -s -o "$jar_path" "$server_jar_url"; then
+  if ! sudo curl -f -s -o "$jar_path" "$server_jar_url"; then
     echo "Error: Failed to download JAR from $server_jar_url"
     return 1
   fi
