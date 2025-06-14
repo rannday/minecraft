@@ -40,8 +40,8 @@ shift
 case "$COMMAND" in
   --setup|-s)         exec "$SRC/setup.sh" "$@" ;;
   --uninstall|-u)     exec "$SRC/uninstall.sh" "$@" ;;
-  --runtime|-r)       exec "$SRC/install-runtime.sh" "$@" ;;
-  --java|-j)          exec "$SRC/install-java.sh" "$@" ;;
+  --runtime|-r)       exec "$SRC/runtime.sh" "$@" ;;
+  --java|-j)          exec "$SRC/java.sh" "$@" ;;
   --download|-d)      exec "$SRC/download.sh" "$@" ;;
   --once|-o)          exec "$SRC/run-once.sh" "$@" ;;
   -h|--help)          usage ;;

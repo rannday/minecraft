@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# shellcheck source=env.sh
-# shellcheck source=utils.sh
+# shellcheck source=src/env.sh
+# shellcheck source=src/utils.sh
 set -euo pipefail
 trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
 [[ "${BASH_SOURCE[0]}" != "${0}" ]] && {
