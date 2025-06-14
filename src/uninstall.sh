@@ -20,8 +20,8 @@ Options:
 EOF
 }
 
+[[ $# -eq 0 ]] && { print_usage; exit 1; }
 [[ "$1" == "-h" || "$1" == "--help" ]] && { print_usage; exit 0; }
-[[ $# -eq 1 ]] || { print_usage; exit 1; }
 
 MODE="$1"
 case "$MODE" in
