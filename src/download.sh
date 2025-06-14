@@ -65,7 +65,7 @@ export SRV_JAR="$jar_path"
 
 download_and_verify() {
   echo "Downloading $jar_name into $SRV_DIR..."
-  if ! curl -f -L -s -o "$jar_path" "$server_jar_url"; then
+  if ! sudo -u "$MC_USER" curl -f -L -s -o "$jar_path" "$server_jar_url"; then
     echo "Error: Failed to download JAR from $server_jar_url"
     return 1
   fi
@@ -85,7 +85,7 @@ if [[ -f "$jar_path" ]]; then
   actual_sha1=$(sha1sum "$jar_path" | awk '{print $1}')
   if [[ "$expected_sha1" != "$actual_sha1" ]]; then
     echo "Existing file failed checksum. Re-downloading..."
-    rm -f "$jar_path"
+    sudo -u "$MC_USER" rm -f "$jar_path"
     download_and_verify || { echo "Re-download failed."; exit 1; }
   else
     echo "Existing file is valid. No download needed."
