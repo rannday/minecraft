@@ -84,7 +84,7 @@ sudo mkdir -p "$SRV_DIR"
 sudo chown -R "$MC_USER:$MC_USER" "$MC_HOME"
 
 [[ -f "$SRC_DIR/java.sh" ]]     && "$SRC_DIR/java.sh"
-[[ -f "$SRC_DIR/download.sh" ]] && sudo -u "$MC_USER" "$SRC_DIR/download.sh"
+[[ -f "$SRC_DIR/download.sh" ]] && "$SRC_DIR/download.sh"
 
 eula_file="$SRV_DIR/eula.txt"
 grep -q 'eula=true' "$eula_file" 2>/dev/null || \
