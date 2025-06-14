@@ -8,10 +8,9 @@ usage() {
 Usage: $(basename "$0") [options]
 
 Options:
-  --help, -h           Show this help and exit
   <server_type>        Required: survival | creative | adventure
+  --help, -h           Show this help and exit
 EOF
-  exit 0
 }
 
 [[ $# -eq 1 ]] || usage

@@ -13,17 +13,17 @@ print_usage() {
 Usage: $(basename "$0") [options]
 
 Options:
-  --target,   -t DIR   Override download target directory
-  --username, -u USER  Override default MC_USER from env.sh
-  --help,     -h       Show this help message and exit
+  --target, -t DIR   Override download target directory
+  --user,   -u USER  Override default MC_USER from env.sh
+  --help,   -h       Show this help message and exit
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -t|--target)   DEST="$2"; shift 2 ;;
-    -u|--username) OWNER="$2"; shift 2 ;;
-    -h|--help)     print_usage; exit 0 ;;
+    -t|--target) DEST="$2"; shift 2 ;;
+    -u|--user)   OWNER="$2"; shift 2 ;;
+    -h|--help)   print_usage; exit 0 ;;
     *) echo "Unknown option: $1"; print_usage; exit 1 ;;
   esac
 done
