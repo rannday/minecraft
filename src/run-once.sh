@@ -32,10 +32,8 @@ case "$MC_GAMEMODE" in
 esac
 
 SRV_DIR="$SRV_BASE/$MC_GAMEMODE"
-SRV_JAR="$(find "$SRV_DIR" -maxdepth 1 -type f -name 'minecraft_server_*.jar' \
-          | sort -r | head -n1)"
-
-[[ -z "$SRV_JAR" ]] && { echo "Error: no server JAR found in $SRV_DIR"; exit 1; }
+SRV_JAR="$SRV_DIR/server.jar"
+[[ -f "$SRV_JAR" ]] && { echo "Error: no server JAR found in $SRV_DIR"; exit 1; }
 
 ARGS_FILE="$SRV_DIR/jvm.args"
 

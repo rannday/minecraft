@@ -9,7 +9,7 @@ SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SRC_DIR/env.sh"        
 source "$SRC_DIR/utils.sh"  
 
-usage() {
+print_usage() {
   cat <<EOF
 Usage: $(basename "$0") [options]
 
@@ -23,7 +23,6 @@ Options:
   --user         USER   Override default MC_USER from env.sh
   --help, -h
 EOF
-  exit 0
 }
 
 while [[ $# -gt 0 ]]; do
@@ -35,8 +34,8 @@ while [[ $# -gt 0 ]]; do
     --pvp)         MC_PVP="$2";        shift 2 ;;
     --whitelist)   MC_WHITELIST="$2";  shift 2 ;;
     --user)        MC_USER="$2";       shift 2 ;;
-    -h|--help)     usage ;;
-    *) echo "Unknown option: $1"; usage ;;
+    -h|--help)     print_usage; exit 0 ;;
+    *) echo "Unknown option: $1"; print_usage; exit 1 ;;
   esac
 done
 
@@ -82,6 +81,18 @@ sudo chown -R "$MC_USER:$MC_USER" "$MC_HOME"
 
 [[ -f "$SRC_DIR/java.sh" ]]     && "$SRC_DIR/java.sh"
 [[ -f "$SRC_DIR/download.sh" ]] && "$SRC_DIR/download.sh"
+
+latest_jar=$(find "$SRV_DIR" -maxdepth 1 -type f -name 'minecraft_server_*.jar' | sort -r | head -n1)
+
+if [[ -n "$latest_jar" ]]; then
+  sudo -u "$MC_USER" ln -sf "$latest_jar" "$SRV_DIR/server.jar"
+
+  # Resolve the symlink to confirm the target
+  resolved=$(resolve_symlink "$SRV_DIR/server.jar")
+  echo "Symlink created: server.jar → $(basename "$resolved")"
+else
+  echo "Warning: No minecraft_server_*.jar found for symlinking."
+fi
 
 eula_file="$SRV_DIR/eula.txt"
 grep -q 'eula=true' "$eula_file" 2>/dev/null || \

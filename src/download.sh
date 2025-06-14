@@ -17,15 +17,14 @@ Options:
   --username, -u USER  Override default MC_USER from env.sh
   --help,     -h       Show this help message and exit
 EOF
-  exit 0
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -t|--target)   DEST="$2"; shift 2 ;;
     -u|--username) OWNER="$2"; shift 2 ;;
-    -h|--help)     print_usage ;;
-    *) echo "Unknown option: $1"; print_usage ;;
+    -h|--help)     print_usage; exit 0 ;;
+    *) echo "Unknown option: $1"; print_usage; exit 1 ;;
   esac
 done
 
