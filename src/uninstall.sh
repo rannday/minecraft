@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-trap 'echo "Uninstall interrupted. Exiting."; exit 1' INT TERM
+trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
+[[ "${BASH_SOURCE[0]}" != "${0}" ]] && {
+  echo "This script should be executed, not sourced."
+  return 1
+}
 
 usage() {
   cat <<EOF

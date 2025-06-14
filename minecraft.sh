@@ -6,13 +6,12 @@ trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
   return 1
 }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPTS="${SCRIPT_DIR}/scripts"
+SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/src" && pwd)"
 
 REQUIRED_SCRIPTS=(setup uninstall install-runtime install-java download run-once)
 for name in "${REQUIRED_SCRIPTS[@]}"; do
-  [[ -x "${SCRIPTS}/${name}.sh" ]] || {
-    echo "Missing or non-executable: ${SCRIPTS}/${name}.sh"
+  [[ -x "${SRC}/${name}.sh" ]] || {
+    echo "Missing or non-executable: ${SRC}/${name}.sh"
     exit 1
   }
 done
@@ -39,12 +38,12 @@ COMMAND="$1"
 shift
 
 case "$COMMAND" in
-  --setup|-s)         exec "$SCRIPTS/setup.sh" "$@" ;;
-  --uninstall|-u)     exec "$SCRIPTS/uninstall.sh" "$@" ;;
-  --runtime|-r)       exec "$SCRIPTS/install-runtime.sh" "$@" ;;
-  --java|-j)          exec "$SCRIPTS/install-java.sh" "$@" ;;
-  --download|-d)      exec "$SCRIPTS/download.sh" "$@" ;;
-  --once|-o)          exec "$SCRIPTS/run-once.sh" "$@" ;;
+  --setup|-s)         exec "$SRC/setup.sh" "$@" ;;
+  --uninstall|-u)     exec "$SRC/uninstall.sh" "$@" ;;
+  --runtime|-r)       exec "$SRC/install-runtime.sh" "$@" ;;
+  --java|-j)          exec "$SRC/install-java.sh" "$@" ;;
+  --download|-d)      exec "$SRC/download.sh" "$@" ;;
+  --once|-o)          exec "$SRC/run-once.sh" "$@" ;;
   -h|--help)          usage ;;
   *) echo "Unknown command: $COMMAND"; usage ;;
 esac

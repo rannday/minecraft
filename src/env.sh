@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "${BASH_SOURCE[0]}" == "${0}" ]] && {
+  echo "This script is meant to be sourced, not executed."
+  exit 1
+}
+
+# Ensure this script is sourced only once
+[[ "${ENV_SH_SOURCED:-}" == "yes" ]] && return 0
+readonly ENV_SH_SOURCED=yes
+
+# Minecraft base configuration
+export MC_USER="minecraft"
+export MC_HOME="/opt/minecraft"
+export SERVER_BASE="$MC_HOME/server"
+
+# Java configuration
+export REQUIRED_JAVA_VERSION="21"
+export JAVA_ARCH="$(dpkg --print-architecture)"   # auto-detect: amd64 / arm64
+export JAVA_BIN_PATH="/usr/lib/jvm/temurin-${REQUIRED_JAVA_VERSION}-jdk-${JAVA_ARCH}/bin"
+
+# Default runtime settings (can be overridden)
+export DEFAULT_MOTD="Minecraft Server"
+export DEFAULT_PORT=25565
+export DEFAULT_RAM="4G"
+export DEFAULT_GAMEMODE="survival"
+export DEFAULT_PVP="true"
+export DEFAULT_WHITELIST=""
+
+# Derived directories (must override GAMEMODE before sourcing to affect SRV_DIR)
+export GAMEMODE="${GAMEMODE:-$DEFAULT_GAMEMODE}"
+export SRV_DIR="${SERVER_BASE}/${GAMEMODE}"
+export SERVER_DIR="$SRV_DIR"  # compatibility with download.sh etc
+
+# Server JAR and JVM args
+export SERVER_JAR="$SERVER_DIR/server.jar"
+export JVM_ARGS_FILE="$SERVER_DIR/jvm.args"
+
+# Systemd + Tmux service
+export SERVICE_NAME="mc-${GAMEMODE}"
+export TMUX_SESSION="${SERVICE_NAME}"
+
+# URL for Mojang manifest
+export MC_VERSION_MANIFEST_URL="https://piston-meta.mojang.com/mc/game/version_manifest.json"

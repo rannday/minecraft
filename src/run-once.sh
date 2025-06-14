@@ -1,7 +1,10 @@
-#!/bin/bash
-
-set -e
-trap 'echo "Interrupted. Shutting down." >&2; exit 1' INT TERM
+#!/usr/bin/env bash
+set -euo pipefail
+trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
+[[ "${BASH_SOURCE[0]}" != "${0}" ]] && {
+  echo "This script should be executed, not sourced."
+  return 1
+}
 
 SERVER_DIR="/opt/minecraft/server/vanilla"
 JAR="$SERVER_DIR/server.jar"

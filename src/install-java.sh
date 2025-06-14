@@ -1,7 +1,10 @@
-#!/bin/bash
-
-set -e
-trap 'echo "Setup interrupted. Exiting."; exit 1' INT TERM
+#!/usr/bin/env bash
+set -euo pipefail
+trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
+[[ "${BASH_SOURCE[0]}" != "${0}" ]] && {
+  echo "This script should be executed, not sourced."
+  return 1
+}
 
 REQUIRED_JAVA_VERSION="21"
 JAVA_BIN_PATH="/usr/lib/jvm/temurin-${REQUIRED_JAVA_VERSION}-jdk-amd64/bin"
