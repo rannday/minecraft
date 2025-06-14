@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# shellcheck source=src/env.sh
-# shellcheck source=src/utils.sh
+# shellcheck source=env.sh
+# shellcheck source=utils.sh
 set -euo pipefail
 trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
 [[ "${BASH_SOURCE[0]}" != "${0}" ]] && {
@@ -53,12 +53,7 @@ fi
   exit 1
 }
 
-for cmd in curl jq sha1sum; do
-  command -v "$cmd" >/dev/null 2>&1 || {
-    echo "Error: $cmd is not installed. Aborting."
-    exit 1
-  }
-done
+require_packages curl jq sha1sum
 
 # Get latest version info from Mojang
 manifest_url="$MC_VERSION_MANIFEST_URL"

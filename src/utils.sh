@@ -20,3 +20,26 @@ resolve_symlink() {
   # Get the absolute path
   echo "$(pwd -P)/$target"
 }
+
+require_packages() {
+  local missing=()
+
+  for pkg in "$@"; do
+    if ! dpkg -s "$pkg" &>/dev/null; then
+      missing+=("$pkg")
+    fi
+  done
+
+  if [[ ${#missing[@]} -eq 0 ]]; then
+    echo "[apt] All required packages already installed: $*"
+    return 0
+  fi
+
+  echo "[apt] Missing packages: ${missing[*]}"
+  echo "[apt] Running apt update..."
+  sudo apt update
+
+  echo "[apt] Installing: ${missing[*]}"
+  sudo apt install -y "${missing[@]}"
+}
+
