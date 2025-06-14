@@ -3,69 +3,68 @@ set -euo pipefail
 trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
 [[ "${BASH_SOURCE[0]}" != "${0}" ]] && { echo "Run, don’t source."; return 1; }
 
-usage() {
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/env.sh"
+
+print_usage() {
   cat <<EOF
-Usage: $(basename "$0") [options]
+Usage: $(basename "$0") <survival|creative|adventure>
+
+Stops, disables, and removes:
+  • mc-\$MC_GAMEMODE.service
+  • mc-\$MC_GAMEMODE-reboot.{timer,service}
+  • \$SRV_BASE/\$MC_GAMEMODE server directory
 
 Options:
-  <server_type>        Required: survival | creative | adventure
-  --help, -h           Show this help and exit
+  --help, -h
 EOF
 }
 
-[[ $# -eq 1 ]] || usage
+[[ $# -eq 1 ]] || { print_usage; exit 1; }
+[[ "$1" == "-h" || "$1" == "--help" ]] && { print_usage; exit 0; }
 
-TYPE="$1"
-case "$TYPE" in
+MODE="$1"
+case "$MODE" in
   survival|creative|adventure) ;;
-  *) echo "Invalid server_type: $TYPE"; usage ;;
+  *) echo "Invalid mode: $MODE"; print_usage; exit 1 ;;
 esac
 
-MC_ROOT="/opt/minecraft"
-SRV_DIR="${MC_ROOT}/server/${TYPE}"
-SERVICE_NAME="mc-${TYPE}"
+MC_GAMEMODE="$MODE"
+
+SERVICE_NAME="mc-${MC_GAMEMODE}"
+SERVICE="${SERVICE_NAME}.service"
+REBOOT_TIMER="${SERVICE_NAME}-reboot.timer"
+REBOOT_SERVICE="${SERVICE_NAME}-reboot.service"
 TMUX_SESSION="$SERVICE_NAME"
+SRV_DIR="${SRV_BASE}/${MC_GAMEMODE}"
 
-echo "Uninstalling server type: ${TYPE}"
-echo "Service: ${SERVICE_NAME}"
-echo "Tmux session: ${TMUX_SESSION}"
+echo "Uninstalling Minecraft server for mode: $MC_GAMEMODE"
+echo "Service       : $SERVICE"
+echo "Reboot timer  : $REBOOT_TIMER"
+echo "Tmux session  : $TMUX_SESSION"
+echo "Server dir    : $SRV_DIR"
+echo
 
-# Stop with player notice and wait for shutdown
-if command -v tmux >/dev/null && sudo -u minecraft tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-  sudo -u minecraft tmux send-keys -t "$TMUX_SESSION" "say Server is shutting down in 10 seconds" C-m
-  sleep 10
-  sudo -u minecraft tmux send-keys -t "$TMUX_SESSION" "stop" C-m
-
-  for i in {1..30}; do
-    if ! sudo -u minecraft tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-      echo "Tmux session ${TMUX_SESSION} stopped."
-      break
-    fi
-    sleep 1
-  done
-
-  # Final kill if still lingering
-  if sudo -u minecraft tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
-    echo "-- Forcing kill of lingering tmux session."
-    sudo -u minecraft tmux kill-session -t "$TMUX_SESSION" || true
+for UNIT in "$REBOOT_TIMER" "$SERVICE"; do
+  if systemctl list-unit-files --quiet "$UNIT"; then
+    echo "Disabling $UNIT"
+    sudo systemctl disable --now "$UNIT" || true
   fi
+done
+sudo rm -f "/etc/systemd/system/$SERVICE" \
+           "/etc/systemd/system/$REBOOT_TIMER" \
+           "/etc/systemd/system/$REBOOT_SERVICE"
+
+sudo systemctl daemon-reload
+sudo systemctl reset-failed
+
+if command -v tmux >/dev/null && \
+  sudo -u "$MC_USER" tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+  echo "Force-killing lingering tmux session"
+  sudo -u "$MC_USER" tmux kill-session -t "$TMUX_SESSION"
 fi
 
-# Stop and remove systemd unit
-if systemctl list-unit-files | grep -q "^${SERVICE_NAME}.service"; then
-  systemctl is-active --quiet "$SERVICE_NAME" && sudo systemctl stop "$SERVICE_NAME"
-  sudo systemctl disable --now "$SERVICE_NAME" || true
-  sudo rm -f "/etc/systemd/system/${SERVICE_NAME}.service"
-  sudo systemctl daemon-reload
-  sudo systemctl reset-failed
+if [[ -d "$SRV_DIR" ]]; then
+  echo "Removing $SRV_DIR"
+  sudo rm -rf "$SRV_DIR"
 fi
-
-# Remove server directory
-[[ -d "$SRV_DIR" ]] && sudo rm -rf "$SRV_DIR"
-
-# Clean up parent dir if empty
-if [[ -d "${MC_ROOT}/server" ]] && [[ -z "$(ls -A "${MC_ROOT}/server")" ]]; then
-  sudo rmdir "${MC_ROOT}/server"
-fi
-
-echo "Done uninstalling ${TYPE} server."

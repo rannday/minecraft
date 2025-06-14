@@ -47,11 +47,12 @@ while [[ $# -gt 0 ]]; do
       SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
       shift ;;
     --user|-u)     MC_USER="$2"; shift ;;
-    --srv-dir|-d)
+       --srv-dir|-d)
       SRV_DIR="$2"
       JAR="${SRV_DIR}/server.jar"
       JVM_ARGS_FILE="${SRV_DIR}/jvm.args"
       SHUTDOWN_SCRIPT="${SRV_DIR}/mc-shutdown.sh"
+      SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
       shift ;;
     --jar|-j)      JAR="$2"; shift ;;
     --jvm-args|-a) JVM_ARGS_FILE="$2"; shift ;;
