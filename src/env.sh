@@ -29,17 +29,5 @@ export MC_WHITELIST=""
 
 export MC_PLAYERS_PER_GB=1
 
-# Derived directories (must override GAMEMODE before sourcing to affect SRV_DIR)
-export GAMEMODE="${GAMEMODE:-$MC_GAMEMODE}"
-export SRV_DIR="${SRV_BASE}/${GAMEMODE}"
-
-# Server JAR and JVM args
-export SRV_JAR="$SRV_DIR/server.jar"
-export JVM_ARGS_FILE="$SRV_DIR/jvm.args"
-
-# Systemd + Tmux service
-export SERVICE_NAME="mc-${GAMEMODE}"
-export TMUX_SESSION="${SERVICE_NAME}"
-
 # URL for Mojang manifest
 export MC_VERSION_MANIFEST_URL="https://piston-meta.mojang.com/mc/game/version_manifest.json"

@@ -49,6 +49,8 @@ case "$MC_GAMEMODE" in
 esac
 
 export SRV_DIR="$SRV_BASE/$MC_GAMEMODE"
+export SRV_JAR="$SRV_DIR/server.jar"
+export JVM_ARGS_FILE="$SRV_DIR/jvm.args"
 export SERVICE_NAME="mc-${MC_GAMEMODE}"
 export TMUX_SESSION="$SERVICE_NAME"
 

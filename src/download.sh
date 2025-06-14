@@ -32,9 +32,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-SRC_DIR="$(dirname "${BASH_SOURCE[0]}")"
-source "${SRC_DIR}/env.sh"
-source "${SRC_DIR}/utils.sh"
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SRC_DIR/env.sh"        
+source "$SRC_DIR/utils.sh"  
 
 [[ -n "$OWNER" ]] && MC_USER="$OWNER"
 [[ -n "$DEST" ]] && SRV_DIR="$DEST"
@@ -61,6 +61,7 @@ expected_sha1=$(echo "$metadata"  | jq -r '.downloads.server.sha1')
 
 jar_name="minecraft_server_${latest_version}.jar"
 jar_path="$SRV_DIR/$jar_name"
+export SRV_JAR="$jar_path"
 
 download_and_verify() {
   echo "Downloading $jar_name into $SRV_DIR..."

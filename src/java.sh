@@ -6,12 +6,11 @@ trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
   return 1
 }
 
-REQUIRED_JAVA_VERSION="21"
-JAVA_BIN_PATH="/usr/lib/jvm/temurin-${REQUIRED_JAVA_VERSION}-jdk-amd64/bin"
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SRC_DIR/env.sh"        
+source "$SRC_DIR/utils.sh"
 
-echo "Installing prerequisites..."
-sudo apt update
-sudo apt install -y wget gnupg software-properties-common
+require_packages wget gnupg software-properties-common
 
 if [ ! -f /usr/share/keyrings/adoptium.gpg ]; then
   wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public \
@@ -39,8 +38,8 @@ else
   sudo update-alternatives --set java "${JAVA_BIN_PATH}/java"
   sudo update-alternatives --set javac "${JAVA_BIN_PATH}/javac"
 
-  java -version | grep "version \"${REQUIRED_JAVA_VERSION}\"" || {
+  if ! java -version 2>&1 | grep -q "version \"${REQUIRED_JAVA_VERSION}"; then
     echo "Failed to activate Java ${REQUIRED_JAVA_VERSION}."
     exit 1
-  }
+  fi
 fi
