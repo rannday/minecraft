@@ -2,17 +2,18 @@
 set -euo pipefail
 trap 'echo "Setup interrupted. Exiting."; exit 1' INT TERM
 
+# ───────────── default values ─────────────
 MOTD="Minecraft Server"
 PORT=25565
 RAM="4G"
-GAMEMODE="survival"
+GAMEMODE="survival"               # survival | creative | adventure
 PVP=true
 WHITELIST=""
 
 MC_HOME="/opt/minecraft"
-SRV_DIR="${MC_BASE}/server/"
+SRV_DIR="${MC_HOME}/server/${GAMEMODE}"   # ◀ central directory variable
 
-# PARSER
+# ───────────── arg parser ─────────────
 usage() {
   cat <<EOF
 Usage: $0 [options]
@@ -21,7 +22,7 @@ Options:
   --motd         TEXT   Message of the day
   --port         NUM    Server port
   --ram          SIZE   Heap size for -Xms / -Xmx (e.g. 8G, 16384M)
-  --gamemode     MODE   Game mode (survival|creative|adventure)
+  --gamemode     MODE   survival | creative | adventure
   --pvp          BOOL   Enable or disable PvP (default: true)
   --whitelist    LIST   Comma-separated player names to pre-fill whitelist
   -h, --help            Show this help and exit
@@ -42,56 +43,51 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# INSTALL PREREQUISITES
+# validate gamemode
+case "$GAMEMODE" in
+  survival|creative|adventure) ;;
+  *) echo "Invalid --gamemode: $GAMEMODE"; exit 1 ;;
+esac
+
+# refresh SRV_DIR now that GAMEMODE may have changed
+SRV_DIR="${MC_HOME}/server/${GAMEMODE}"
+
+# ───────────── prerequisites ─────────────
 sudo apt update
 sudo apt upgrade -y
 sudo apt install -y curl tmux jq git
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-SCRIPTS_DIR="$SCRIPT_DIR"
 
-# INSTALL JAVA
-if [[ -f "${SCRIPTS_DIR}/install-java.sh" ]]; then
-  "${SCRIPTS_DIR}/install-java.sh"
-else
-  echo "Warning: install-java.sh not found in ${SCRIPTS_DIR}"
-fi
+# ───────────── Java ─────────────
+[[ -f "${SCRIPT_DIR}/install-java.sh" ]] && "${SCRIPT_DIR}/install-java.sh"
 
-# SETUP USER
+# ───────────── minecraft user & dirs ─────────────
 if ! id minecraft &>/dev/null; then
-  echo "Creating 'minecraft' system user..."
-  sudo adduser --system --home /opt/minecraft --shell /bin/bash --group minecraft
-else
-  echo "'minecraft' user already exists."
+  sudo adduser --system --home "$MC_HOME" --shell /bin/bash --group minecraft
 fi
 
-if [ ! -d /opt/minecraft ]; then
-  echo "Creating /opt/minecraft..."
-  sudo mkdir -p /opt/minecraft
-fi
+sudo mkdir -p "$SRV_DIR"
+sudo chown -R minecraft:minecraft "$MC_HOME"
 
-sudo chown -R minecraft:minecraft /opt/minecraft
-sudo -u minecraft mkdir -p /opt/minecraft/server/vanilla
+# ───────────── download server jar ─────────────
+# (download.sh currently hard-codes SERVER_DIR; update it later or export var)
+export SERVER_DIR="$SRV_DIR"
+[[ -f "${SCRIPT_DIR}/download.sh" ]] && "${SCRIPT_DIR}/download.sh"
 
-if [[ -f "${SCRIPTS_DIR}/download.sh" ]]; then
-  "${SCRIPTS_DIR}/download.sh"
-else
-  echo "Warning: download.sh not found in ${SCRIPTS_DIR}"
-fi
+# ───────────── EULA ─────────────
+eula_file="$SRV_DIR/eula.txt"
+grep -q 'eula=true' "$eula_file" 2>/dev/null || \
+  sudo -u minecraft bash -c "echo 'eula=true' > '$eula_file'"
 
-eula_file="/opt/minecraft/server/vanilla/eula.txt"
-if ! grep -q 'eula=true' "$eula_file" 2>/dev/null; then
-  sudo -u minecraft bash -c 'echo "eula=true" > /opt/minecraft/server/vanilla/eula.txt'
-fi
-
+# ───────────── server.properties ─────────────
 WHITELIST_ENABLED=false
 [[ -n "$WHITELIST" ]] && WHITELIST_ENABLED=true
 
-properties_file="/opt/minecraft/server/vanilla/server.properties"
-if [ ! -f "$properties_file" ]; then
-  echo "Creating default server.properties at $properties_file..."
-  sudo -u minecraft tee "$properties_file" > /dev/null <<EOF
+properties_file="$SRV_DIR/server.properties"
+if [[ ! -f "$properties_file" ]]; then
+  sudo -u minecraft tee "$properties_file" >/dev/null <<EOF
 enforce-whitelist=${WHITELIST_ENABLED}
 force-gamemode=true
 gamemode=${GAMEMODE}
@@ -102,15 +98,12 @@ server-port=${PORT}
 white-list=${WHITELIST_ENABLED}
 motd=${MOTD}
 EOF
-else
-  echo "server.properties already exists — skipping."
 fi
 
-jvm_args_file="/opt/minecraft/server/vanilla/jvm.args"
-
-if [ ! -f "$jvm_args_file" ]; then
-  echo "Creating default JVM args at $jvm_args_file..."
-  sudo -u minecraft tee "$jvm_args_file" > /dev/null <<EOF
+# ───────────── JVM args ─────────────
+jvm_args_file="$SRV_DIR/jvm.args"
+if [[ ! -f "$jvm_args_file" ]]; then
+  sudo -u minecraft tee "$jvm_args_file" >/dev/null <<EOF
 -Xms${RAM}
 -Xmx${RAM}
 -XX:+UseG1GC
@@ -132,6 +125,6 @@ if [ ! -f "$jvm_args_file" ]; then
 -Dusing.aikars.flags=https://mcflags.emc.gs
 -Daikars.new.flags=true
 EOF
-else
-  echo "JVM args file already exists at $jvm_args_file — skipping."
 fi
+
+echo "Setup complete — server files in $SRV_DIR"
