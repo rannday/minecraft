@@ -1,34 +1,59 @@
 #!/usr/bin/env bash
 set -euo pipefail
 trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
-[[ "${BASH_SOURCE[0]}" != "${0}" ]] && {
-  echo "This script should be executed, not sourced."
-  return 1
+[[ "${BASH_SOURCE[0]}" != "${0}" ]] && { echo "Run, don’t source."; return 1; }
+
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SRC_DIR/env.sh"
+source "$SRC_DIR/utils.sh"
+
+# ── CLI parsing ────────────────────────────────────────────────
+print_usage() {
+  cat <<EOF
+Usage: $(basename "$0") [options]
+
+Options:
+  --mode, -m MODE   Gamemode to run (survival | creative | adventure)
+  --help, -h
+EOF
 }
 
-SERVER_DIR="/opt/minecraft/server/vanilla"
-JAR="$SERVER_DIR/server.jar"
-ARGS_FILE="$SERVER_DIR/jvm.args"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -m|--mode)  MC_GAMEMODE="$2"; shift 2 ;;
+    -h|--help)  print_usage; exit 0 ;;
+    *)          echo "Unknown option: $1"; print_usage; exit 1 ;;
+  esac
+done
 
-if ! id minecraft &>/dev/null; then
-  echo "Error: 'minecraft' user does not exist."
-  exit 1
-fi
+case "$MC_GAMEMODE" in
+  survival|creative|adventure) ;;
+  *) echo "Invalid --mode: $MC_GAMEMODE"; exit 1 ;;
+esac
 
-if [ ! -f "$JAR" ]; then
-  echo "Error: server.jar not found at $JAR"
-  exit 1
-fi
+SRV_DIR="$SRV_BASE/$MC_GAMEMODE"
+SRV_JAR="$(find "$SRV_DIR" -maxdepth 1 -type f -name 'minecraft_server_*.jar' \
+          | sort -r | head -n1)"
 
-if [ -f "$ARGS_FILE" ]; then
-  echo "Using JVM args from $ARGS_FILE:"
-  cat "$ARGS_FILE"
+[[ -z "$SRV_JAR" ]] && { echo "Error: no server JAR found in $SRV_DIR"; exit 1; }
+
+ARGS_FILE="$SRV_DIR/jvm.args"
+
+id "$MC_USER" &>/dev/null || { echo "Error: user '$MC_USER' does not exist."; exit 1; }
+
+echo "Starting Minecraft server manually…"
+echo "Gamemode  : $MC_GAMEMODE"
+echo "Directory : $SRV_DIR"
+echo "Jar       : $(basename "$SRV_JAR")"
+if [[ -f "$ARGS_FILE" ]]; then
+  echo "Args file : $(basename "$ARGS_FILE")"
 else
-  echo "Warning: No jvm.args file found — using default JVM settings."
+  echo "Args file : (none – using default JVM flags)"
 fi
 
-echo "Starting Minecraft server manually..."
-echo "Directory: $SERVER_DIR"
-echo "Command: java @$ARGS_FILE -jar server.jar nogui"
-
-sudo -u minecraft bash -c "cd \"$SERVER_DIR\" && exec java @$ARGS_FILE -jar server.jar nogui"
+cd "$SRV_DIR"
+if [[ -f "$ARGS_FILE" ]]; then
+  exec sudo -u "$MC_USER" java @"$ARGS_FILE" -jar "$SRV_JAR" nogui
+else
+  exec sudo -u "$MC_USER" java -jar "$SRV_JAR" nogui
+fi

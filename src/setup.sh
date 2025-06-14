@@ -3,10 +3,7 @@
 # shellcheck source=src/utils.sh
 set -euo pipefail
 trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
-[[ "${BASH_SOURCE[0]}" != "${0}" ]] && {
-  echo "This script should be executed, not sourced."
-  return 1
-}
+[[ "${BASH_SOURCE[0]}" != "${0}" ]] && { echo "Run, don’t source."; return 1; }
 
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SRC_DIR/env.sh"        
@@ -14,7 +11,7 @@ source "$SRC_DIR/utils.sh"
 
 usage() {
   cat <<EOF
-Usage: ./setup.sh [options]
+Usage: $(basename "$0") [options]
 
 Options:
   --motd         TEXT   Message of the day
@@ -26,7 +23,7 @@ Options:
   --user         USER   Override default MC_USER from env.sh
   --help, -h
 EOF
-  exit 1
+  exit 0
 }
 
 while [[ $# -gt 0 ]]; do

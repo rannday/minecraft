@@ -20,7 +20,7 @@ run_script() {
 
 usage() {
   cat <<EOF
-Usage: $0 <command> [args...]
+Usage: $(basename "$0") <command> [args...]
 
 Commands:
   --setup,     -s  Run setup script (passes args to setup.sh)
@@ -31,7 +31,7 @@ Commands:
   --once,      -o  Run one-off setup tasks (run-once.sh)
   --help,      -h  Show this help (or -s -h, -u -h, etc)
 EOF
-  exit 1
+  exit 0
 }
 
 [[ $# -ge 1 ]] || usage

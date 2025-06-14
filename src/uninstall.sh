@@ -1,20 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
-[[ "${BASH_SOURCE[0]}" != "${0}" ]] && {
-  echo "This script should be executed, not sourced."
-  return 1
-}
+[[ "${BASH_SOURCE[0]}" != "${0}" ]] && { echo "Run, don’t source."; return 1; }
 
 usage() {
   cat <<EOF
-Usage: ./uninstall.sh [options]
+Usage: $(basename "$0") [options]
 
 Options:
   --help, -h           Show this help and exit
   <server_type>        Required: survival | creative | adventure
 EOF
-  exit 1
+  exit 0
 }
 
 [[ $# -eq 1 ]] || usage

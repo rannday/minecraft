@@ -3,10 +3,7 @@
 # shellcheck source=src/utils.sh
 set -euo pipefail
 trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
-[[ "${BASH_SOURCE[0]}" != "${0}" ]] && {
-  echo "This script should be executed, not sourced."
-  return 1
-}
+[[ "${BASH_SOURCE[0]}" != "${0}" ]] && { echo "Run, don’t source."; return 1; }
 
 DEST=""
 OWNER=""
