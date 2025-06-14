@@ -8,22 +8,26 @@ source "${SCRIPT_DIR}/env.sh"
 
 print_usage() {
   cat <<EOF
-Usage: $(basename "$0") <survival|creative|adventure>
-
-Stops, disables, and removes:
-  • mc-\$MC_GAMEMODE.service
-  • mc-\$MC_GAMEMODE-reboot.{timer,service}
-  • \$SRV_BASE/\$MC_GAMEMODE server directory
+Usage: $(basename "$0") [--mode MODE]
 
 Options:
-  --help, -h
+  --mode, -m MODE   Server mode to uninstall (default: \$MC_GAMEMODE)
+  --help, -h       
 EOF
 }
 
-[[ $# -eq 0 ]] && MODE="$MC_GAMEMODE" || MODE="$1"
-[[ "$MODE" == "-h" || "$MODE" == "--help" ]] && { print_usage; exit 0; }
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --mode|-m) MODE="$2"; shift ;;
+    --help|-h) print_usage; exit 0 ;;
+    *) echo "Unknown option: $1"; print_usage; exit 1 ;;
+  esac
+  shift
+done
 
-MODE="$1"
+# Use default if not explicitly passed
+MODE="${MODE:-$MC_GAMEMODE}"
+
 case "$MODE" in
   survival|creative|adventure) ;;
   *) echo "Invalid mode: $MODE"; print_usage; exit 1 ;;
