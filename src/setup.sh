@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# shellcheck source=src/env.sh
+# shellcheck source=src/utils.sh
 set -euo pipefail
 trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
 [[ "${BASH_SOURCE[0]}" != "${0}" ]] && {
@@ -6,99 +8,104 @@ trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
   return 1
 }
 
-MOTD="Minecraft Server"
-PORT=25565
-RAM="4G"
-GAMEMODE="survival"
-PVP=true
-WHITELIST=""
-
-MC_HOME="/opt/minecraft"
-SRV_DIR="${MC_HOME}/server/${GAMEMODE}"
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SRC_DIR/env.sh"        
+source "$SRC_DIR/utils.sh"  
 
 usage() {
   cat <<EOF
-Usage: $0 [options]
+Usage: ./setup.sh [options]
 
 Options:
   --motd         TEXT   Message of the day
   --port         NUM    Server port
-  --ram          SIZE   Heap size for -Xms / -Xmx (e.g. 8G, 16384M)
+  --ram          SIZE   Heap size for -Xms/-Xmx (e.g. 8G, 16384M)
   --gamemode     MODE   survival | creative | adventure
   --pvp          BOOL   Enable or disable PvP (default: true)
   --whitelist    LIST   Comma-separated player names to pre-fill whitelist
-  -h, --help            Show this help and exit
+  --user         USER   Override default MC_USER from env.sh
+  -h, --help
 EOF
   exit 1
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --motd)        MOTD="$2";         shift 2 ;;
-    --port)        PORT="$2";         shift 2 ;;
-    --ram)         RAM="$2";          shift 2 ;;
-    --gamemode)    GAMEMODE="$2";     shift 2 ;;
-    --pvp)         PVP="$2";          shift 2 ;;
-    --whitelist)   WHITELIST="$2";    shift 2 ;;
+    --motd)        MC_MOTD="$2";       shift 2 ;;
+    --port)        MC_PORT="$2";       shift 2 ;;
+    --ram)         MC_RAM="$2";        shift 2 ;;
+    --gamemode)    MC_GAMEMODE="$2";   shift 2 ;;
+    --pvp)         MC_PVP="$2";        shift 2 ;;
+    --whitelist)   MC_WHITELIST="$2";  shift 2 ;;
+    --user)        MC_USER="$2";       shift 2 ;;
     -h|--help)     usage ;;
     *) echo "Unknown option: $1"; usage ;;
   esac
 done
 
-case "$GAMEMODE" in
+case "$MC_GAMEMODE" in
   survival|creative|adventure) ;;
-  *) echo "Invalid --gamemode: $GAMEMODE"; exit 1 ;;
+  *) echo "Invalid --gamemode: $MC_GAMEMODE"; exit 1 ;;
 esac
 
-SRV_DIR="${MC_HOME}/server/${GAMEMODE}"
+export SRV_DIR="$SRV_BASE/$MC_GAMEMODE"
+export SERVICE_NAME="mc-${MC_GAMEMODE}"
+export TMUX_SESSION="$SERVICE_NAME"
 
-sudo apt update
-sudo apt upgrade -y
-sudo apt install -y curl tmux jq git
+# Compute MAX_PLAYERS from RAM + ratio
+players_per_gb="${MC_PLAYERS_PER_GB:-1}"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+if [[ "$MC_RAM" =~ ^([0-9]+)([GgMm])$ ]]; then
+  mem=${BASH_REMATCH[1]}
+  unit=${BASH_REMATCH[2]}
 
-[[ -f "${SCRIPT_DIR}/install-java.sh" ]] && "${SCRIPT_DIR}/install-java.sh"
+  # Always convert MiB, then floor to 1 GiB
+  if [[ "$unit" =~ [Mm] ]]; then
+    mem=$(( mem / 1024 ))
+  fi
+  (( mem < 1 )) && mem=1
+  (( players_per_gb < 1 )) && players_per_gb=1
 
-if ! id minecraft &>/dev/null; then
-  sudo adduser --system --home "$MC_HOME" --shell /bin/bash --group minecraft
+  MAX_PLAYERS=$(( mem * players_per_gb ))
+  (( MAX_PLAYERS > 100 )) && MAX_PLAYERS=100
+else
+  MAX_PLAYERS=10
+  echo "WARNING: Could not parse MC_RAM='$MC_RAM'; using fallback MAX_PLAYERS=$MAX_PLAYERS"
+fi
+echo "max-players set to $MAX_PLAYERS (${mem:-?} GiB @ ${players_per_gb} players/GiB)"
+
+[[ -f "$SRC_DIR/java.sh" ]]     && "$SRC_DIR/java.sh"
+[[ -f "$SRC_DIR/download.sh" ]] && "$SRC_DIR/download.sh" --target "$SRV_DIR" --username "$MC_USER"
+
+if ! id "$MC_USER" &>/dev/null; then
+  sudo adduser --system --home "$MC_HOME" --shell /bin/bash --group "$MC_USER"
 fi
 
 sudo mkdir -p "$SRV_DIR"
-sudo chown -R minecraft:minecraft "$MC_HOME"
-
-# (download.sh currently hard-codes SERVER_DIR; update it later or export var)
-export SERVER_DIR="$SRV_DIR"
-[[ -f "${SCRIPT_DIR}/download.sh" ]] && "${SCRIPT_DIR}/download.sh"
+sudo chown -R "$MC_USER:$MC_USER" "$MC_HOME"
 
 eula_file="$SRV_DIR/eula.txt"
 grep -q 'eula=true' "$eula_file" 2>/dev/null || \
-  sudo -u minecraft bash -c "echo 'eula=true' > '$eula_file'"
+  sudo -u "$MC_USER" bash -c "echo 'eula=true' > '$eula_file'"
 
 WHITELIST_ENABLED=false
-[[ -n "$WHITELIST" ]] && WHITELIST_ENABLED=true
+[[ -n "${MC_WHITELIST:-}" ]] && WHITELIST_ENABLED=true
 
-properties_file="$SRV_DIR/server.properties"
-if [[ ! -f "$properties_file" ]]; then
-  sudo -u minecraft tee "$properties_file" >/dev/null <<EOF
+sudo -u "$MC_USER" tee "$SRV_DIR/server.properties" >/dev/null <<EOF
 enforce-whitelist=${WHITELIST_ENABLED}
 force-gamemode=true
-gamemode=${GAMEMODE}
-max-players=20
+gamemode=${MC_GAMEMODE}
+max-players=${MAX_PLAYERS}
 online-mode=true
-pvp=${PVP}
-server-port=${PORT}
+pvp=${MC_PVP}
+server-port=${MC_PORT}
 white-list=${WHITELIST_ENABLED}
-motd=${MOTD}
+motd=${MC_MOTD}
 EOF
-fi
 
-jvm_args_file="$SRV_DIR/jvm.args"
-if [[ ! -f "$jvm_args_file" ]]; then
-  sudo -u minecraft tee "$jvm_args_file" >/dev/null <<EOF
--Xms${RAM}
--Xmx${RAM}
+sudo -u "$MC_USER" tee "$SRV_DIR/jvm.args" >/dev/null <<EOF
+-Xms${MC_RAM}
+-Xmx${MC_RAM}
 -XX:+UseG1GC
 -XX:+ParallelRefProcEnabled
 -XX:MaxGCPauseMillis=200
@@ -118,6 +125,5 @@ if [[ ! -f "$jvm_args_file" ]]; then
 -Dusing.aikars.flags=https://mcflags.emc.gs
 -Daikars.new.flags=true
 EOF
-fi
 
 echo "Setup complete — server files in $SRV_DIR"

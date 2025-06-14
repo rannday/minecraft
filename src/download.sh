@@ -93,5 +93,4 @@ else
   download_and_verify || { echo "Download failed."; exit 1; }
 fi
 
-echo "Done."
-echo "JAR: $jar_path"
+echo "Done - JAR: $jar_path"

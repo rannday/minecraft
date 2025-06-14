@@ -20,15 +20,17 @@ export JAVA_ARCH="$(dpkg --print-architecture)"   # auto-detect: amd64 / arm64
 export JAVA_BIN_PATH="/usr/lib/jvm/temurin-${REQUIRED_JAVA_VERSION}-jdk-${JAVA_ARCH}/bin"
 
 # Default runtime settings (can be overridden)
-export DEFAULT_MOTD="Minecraft Server"
-export DEFAULT_PORT=25565
-export DEFAULT_RAM="4G"
-export DEFAULT_GAMEMODE="survival"
-export DEFAULT_PVP="true"
-export DEFAULT_WHITELIST=""
+export MC_MOTD="Minecraft Server"
+export MC_PORT=25565
+export MC_RAM="4G"
+export MC_GAMEMODE="survival"
+export MC_PVP="true"
+export MC_WHITELIST=""
+
+export MC_PLAYERS_PER_GB=1
 
 # Derived directories (must override GAMEMODE before sourcing to affect SRV_DIR)
-export GAMEMODE="${GAMEMODE:-$DEFAULT_GAMEMODE}"
+export GAMEMODE="${GAMEMODE:-$MC_GAMEMODE}"
 export SRV_DIR="${SRV_BASE}/${GAMEMODE}"
 
 # Server JAR and JVM args
