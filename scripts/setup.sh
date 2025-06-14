@@ -21,7 +21,7 @@ Options:
   --motd         TEXT   Message of the day
   --port         NUM    Server port
   --ram          SIZE   Heap size for -Xms / -Xmx (e.g. 8G, 16384M)
-  --gamemode     MODE   Game mode (survival|creative|adventure|spectator)
+  --gamemode     MODE   Game mode (survival|creative|adventure)
   --pvp          BOOL   Enable or disable PvP (default: true)
   --whitelist    LIST   Comma-separated player names to pre-fill whitelist
   -h, --help            Show this help and exit
@@ -47,8 +47,9 @@ sudo apt update
 sudo apt upgrade -y
 sudo apt install -y curl tmux jq git
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPTS_DIR="${ROOT_DIR}/scripts"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPTS_DIR="$SCRIPT_DIR"
 
 # INSTALL JAVA
 if [[ -f "${SCRIPTS_DIR}/install-java.sh" ]]; then
