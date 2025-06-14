@@ -61,13 +61,19 @@ done
 
 require_packages tmux
 
-# Optional: ensure Java exists
-command -v "$JAVA" >/dev/null || {
-  echo "[error] Java not found at $JAVA"
+# Check server dir exists (setup must have been run)
+[[ -d "$SRV_DIR" ]] || {
+  echo "[error] Server directory not found: $SRV_DIR" >&2
   exit 1
 }
 
-# Write the shutdown script
+# Check Java exists
+command -v "$JAVA" >/dev/null || {
+  echo "[error] Java not found at $JAVA" >&2
+  exit 1
+}
+
+# Write shutdown script
 sudo tee "$SHUTDOWN_SCRIPT" >/dev/null <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -81,7 +87,9 @@ EOS
 
 sudo chmod +x "$SHUTDOWN_SCRIPT"
 
-read -r -d '' UNIT <<EOF
+# Write systemd unit file
+echo "[systemd] Writing unit file: $SERVICE_FILE"
+sudo tee "$SERVICE_FILE" >/dev/null <<EOF
 [Unit]
 Description=Minecraft ${MC_GAMEMODE^} Server
 After=network.target
@@ -99,7 +107,7 @@ ExecStop="$SHUTDOWN_SCRIPT" "$SESSION_NAME"
 ExecStopPost=/usr/bin/tmux kill-session -t "$SESSION_NAME"
 
 Restart=on-failure
-SuccessExitStatus=0 1
+SuccessExitStatus=0 1 143
 TimeoutStopSec=45
 RemainAfterExit=true
 
@@ -107,18 +115,18 @@ RemainAfterExit=true
 WantedBy=multi-user.target
 EOF
 
-echo "[systemd] Writing unit file: $SERVICE_FILE"
-echo "$UNIT" | sudo tee "$SERVICE_FILE" >/dev/null
 sudo systemctl daemon-reload
 
 cat <<INFO
 Unit file created at $SERVICE_FILE ✔
 
 Next steps (manual):
-  # Enable and start
+  # Enable and start the service
   sudo systemctl enable --now $SERVICE_NAME
 
-  # Then attach to the console
-  sudo -u $MC_USER tmux a -t $SESSION_NAME
+  # Attach to the console if running
+  sudo -u $MC_USER tmux attach -t $SESSION_NAME
+  # Check running sessions
+  sudo -u $MC_USER tmux ls
 
 INFO
