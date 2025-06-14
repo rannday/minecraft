@@ -7,7 +7,6 @@ SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SRC_DIR/env.sh"
 source "$SRC_DIR/utils.sh"
 
-# ── CLI parsing ────────────────────────────────────────────────
 print_usage() {
   cat <<EOF
 Usage: $(basename "$0") [options]
@@ -33,7 +32,7 @@ esac
 
 SRV_DIR="$SRV_BASE/$MC_GAMEMODE"
 SRV_JAR="$SRV_DIR/server.jar"
-[[ -f "$SRV_JAR" ]] && { echo "Error: no server JAR found in $SRV_DIR"; exit 1; }
+[[ -f "$SRV_JAR" ]] || { echo "Error: server.jar not found in $SRV_DIR"; exit 1; }
 
 ARGS_FILE="$SRV_DIR/jvm.args"
 
