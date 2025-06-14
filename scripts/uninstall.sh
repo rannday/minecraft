@@ -3,12 +3,13 @@ set -euo pipefail
 trap 'echo "Uninstall interrupted. Exiting."; exit 1' INT TERM
 
 usage() {
-  echo "Usage: $0 <server_type>"
-  echo
-  echo "Removes a Minecraft server instance created by setup.sh."
-  echo
-  echo "Arguments:"
-  echo "  <server_type> - survival | creative | adventure"
+  cat <<EOF
+Usage: ./uninstall.sh [options]
+
+Options:
+  --help, -h           Show this help and exit
+  <server_type>        Required: survival | creative | adventure
+EOF
   exit 1
 }
 

@@ -2,18 +2,16 @@
 set -euo pipefail
 trap 'echo "Setup interrupted. Exiting."; exit 1' INT TERM
 
-# ───────────── default values ─────────────
 MOTD="Minecraft Server"
 PORT=25565
 RAM="4G"
-GAMEMODE="survival"               # survival | creative | adventure
+GAMEMODE="survival"
 PVP=true
 WHITELIST=""
 
 MC_HOME="/opt/minecraft"
-SRV_DIR="${MC_HOME}/server/${GAMEMODE}"   # ◀ central directory variable
+SRV_DIR="${MC_HOME}/server/${GAMEMODE}"
 
-# ───────────── arg parser ─────────────
 usage() {
   cat <<EOF
 Usage: $0 [options]
@@ -43,16 +41,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# validate gamemode
 case "$GAMEMODE" in
   survival|creative|adventure) ;;
   *) echo "Invalid --gamemode: $GAMEMODE"; exit 1 ;;
 esac
 
-# refresh SRV_DIR now that GAMEMODE may have changed
 SRV_DIR="${MC_HOME}/server/${GAMEMODE}"
 
-# ───────────── prerequisites ─────────────
 sudo apt update
 sudo apt upgrade -y
 sudo apt install -y curl tmux jq git
@@ -60,10 +55,8 @@ sudo apt install -y curl tmux jq git
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# ───────────── Java ─────────────
 [[ -f "${SCRIPT_DIR}/install-java.sh" ]] && "${SCRIPT_DIR}/install-java.sh"
 
-# ───────────── minecraft user & dirs ─────────────
 if ! id minecraft &>/dev/null; then
   sudo adduser --system --home "$MC_HOME" --shell /bin/bash --group minecraft
 fi
@@ -71,17 +64,14 @@ fi
 sudo mkdir -p "$SRV_DIR"
 sudo chown -R minecraft:minecraft "$MC_HOME"
 
-# ───────────── download server jar ─────────────
 # (download.sh currently hard-codes SERVER_DIR; update it later or export var)
 export SERVER_DIR="$SRV_DIR"
 [[ -f "${SCRIPT_DIR}/download.sh" ]] && "${SCRIPT_DIR}/download.sh"
 
-# ───────────── EULA ─────────────
 eula_file="$SRV_DIR/eula.txt"
 grep -q 'eula=true' "$eula_file" 2>/dev/null || \
   sudo -u minecraft bash -c "echo 'eula=true' > '$eula_file'"
 
-# ───────────── server.properties ─────────────
 WHITELIST_ENABLED=false
 [[ -n "$WHITELIST" ]] && WHITELIST_ENABLED=true
 
@@ -100,7 +90,6 @@ motd=${MOTD}
 EOF
 fi
 
-# ───────────── JVM args ─────────────
 jvm_args_file="$SRV_DIR/jvm.args"
 if [[ ! -f "$jvm_args_file" ]]; then
   sudo -u minecraft tee "$jvm_args_file" >/dev/null <<EOF
