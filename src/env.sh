@@ -12,7 +12,7 @@ readonly ENV_SH_SOURCED=yes
 # Minecraft base configuration
 export MC_USER="minecraft"
 export MC_HOME="/opt/minecraft"
-export SERVER_BASE="$MC_HOME/server"
+export SRV_BASE="$MC_HOME/server"
 
 # Java configuration
 export REQUIRED_JAVA_VERSION="21"
@@ -29,12 +29,11 @@ export DEFAULT_WHITELIST=""
 
 # Derived directories (must override GAMEMODE before sourcing to affect SRV_DIR)
 export GAMEMODE="${GAMEMODE:-$DEFAULT_GAMEMODE}"
-export SRV_DIR="${SERVER_BASE}/${GAMEMODE}"
-export SERVER_DIR="$SRV_DIR"  # compatibility with download.sh etc
+export SRV_DIR="${SRV_BASE}/${GAMEMODE}"
 
 # Server JAR and JVM args
-export SERVER_JAR="$SERVER_DIR/server.jar"
-export JVM_ARGS_FILE="$SERVER_DIR/jvm.args"
+export SRV_JAR="$SRV_DIR/server.jar"
+export JVM_ARGS_FILE="$SRV_DIR/jvm.args"
 
 # Systemd + Tmux service
 export SERVICE_NAME="mc-${GAMEMODE}"
