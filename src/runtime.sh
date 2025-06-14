@@ -14,6 +14,8 @@ JAR="${SRV_DIR}/server.jar"
 JVM_ARGS_FILE="${SRV_DIR}/jvm.args"
 SHUTDOWN_SCRIPT="${SRV_DIR}/mc-shutdown.sh"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
+REBOOT_SERVICE="/etc/systemd/system/${SERVICE_NAME}-reboot.service"
+REBOOT_TIMER="/etc/systemd/system/${SERVICE_NAME}-reboot.timer"
 JAVA="${JAVA_BIN_PATH}/java"
 
 print_usage() {
@@ -61,19 +63,16 @@ done
 
 require_packages tmux
 
-# Check server dir exists (setup must have been run)
 [[ -d "$SRV_DIR" ]] || {
   echo "[error] Server directory not found: $SRV_DIR" >&2
   exit 1
 }
 
-# Check Java exists
 command -v "$JAVA" >/dev/null || {
   echo "[error] Java not found at $JAVA" >&2
   exit 1
 }
 
-# Write shutdown script
 sudo tee "$SHUTDOWN_SCRIPT" >/dev/null <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -87,7 +86,6 @@ EOS
 
 sudo chmod +x "$SHUTDOWN_SCRIPT"
 
-# Write systemd unit file
 echo "[systemd] Writing unit file: $SERVICE_FILE"
 sudo tee "$SERVICE_FILE" >/dev/null <<EOF
 [Unit]
@@ -102,17 +100,47 @@ ProtectSystem=full
 ProtectHome=true
 NoNewPrivileges=true
 
-ExecStart=/usr/bin/tmux new-session -s "$SESSION_NAME" -d "$JAVA @$JVM_ARGS_FILE -jar $JAR nogui"
-ExecStop="$SHUTDOWN_SCRIPT" "$SESSION_NAME"
-ExecStopPost=/usr/bin/tmux kill-session -t "$SESSION_NAME"
+ExecStart=/usr/bin/tmux new-session -s ${SESSION_NAME} -d "${JAVA} @${JVM_ARGS_FILE} -jar ${JAR} nogui"
+ExecStop=${SHUTDOWN_SCRIPT} ${SESSION_NAME}
+ExecStopPost=/usr/bin/tmux kill-session -t ${SESSION_NAME}
 
 Restart=on-failure
+RestartSec=5
 SuccessExitStatus=0 1 143
 TimeoutStopSec=45
 RemainAfterExit=true
 
 [Install]
 WantedBy=multi-user.target
+EOF
+
+echo "[systemd] Writing reboot helper: $REBOOT_SERVICE"
+sudo tee "$REBOOT_SERVICE" >/dev/null <<EOF
+[Unit]
+Description=Daily reboot of ${SERVICE_NAME}.service
+Requires=${SERVICE_NAME}.service
+After=${SERVICE_NAME}.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/systemctl restart ${SERVICE_NAME}.service
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+echo "[systemd] Writing reboot timer : $REBOOT_TIMER"
+sudo tee "$REBOOT_TIMER" >/dev/null <<EOF
+[Unit]
+Description=Auto-restart ${MC_GAMEMODE^} server daily at 05:00
+After=network.target time-sync.target
+
+[Timer]
+OnCalendar=*-*-* 05:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
 EOF
 
 sudo systemctl daemon-reload
@@ -123,6 +151,9 @@ Unit file created at $SERVICE_FILE ✔
 Next steps (manual):
   # Enable and start the service
   sudo systemctl enable --now $SERVICE_NAME
+
+  # Enable and start the reboot timer
+  sudo systemctl enable --now ${SERVICE_NAME}-reboot.timer
 
   # Attach to the console if running
   sudo -u $MC_USER tmux attach -t $SESSION_NAME
