@@ -14,15 +14,15 @@ print_usage() {
 Usage: $(basename "$0") [options]
 
 Options:
-  -d, --destination DIR   Override download target directory
-  -h, --help              Show this help message and exit
+  --target, -t DIR  Override download target directory
+  --help,   -h      Show this help message and exit
 EOF
   exit 0
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -d|--destination)
+    -t|--target)
       DEST="$2"
       shift 2
       ;;
@@ -53,7 +53,7 @@ fi
   exit 1
 }
 
-require_packages curl jq sha1sum
+require_packages curl jq
 
 # Get latest version info from Mojang
 manifest_url="$MC_VERSION_MANIFEST_URL"
