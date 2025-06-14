@@ -24,7 +24,7 @@ Options:
   --pvp          BOOL   Enable or disable PvP (default: true)
   --whitelist    LIST   Comma-separated player names to pre-fill whitelist
   --user         USER   Override default MC_USER from env.sh
-  -h, --help
+  --help, -h
 EOF
   exit 1
 }
@@ -74,15 +74,15 @@ else
 fi
 echo "max-players set to $MAX_PLAYERS (${mem:-?} GiB @ ${players_per_gb} players/GiB)"
 
-[[ -f "$SRC_DIR/java.sh" ]]     && "$SRC_DIR/java.sh"
-[[ -f "$SRC_DIR/download.sh" ]] && "$SRC_DIR/download.sh" --target "$SRV_DIR" --username "$MC_USER"
-
 if ! id "$MC_USER" &>/dev/null; then
   sudo adduser --system --home "$MC_HOME" --shell /bin/bash --group "$MC_USER"
 fi
 
 sudo mkdir -p "$SRV_DIR"
 sudo chown -R "$MC_USER:$MC_USER" "$MC_HOME"
+
+[[ -f "$SRC_DIR/java.sh" ]]     && "$SRC_DIR/java.sh"
+[[ -f "$SRC_DIR/download.sh" ]] && "$SRC_DIR/download.sh" --target "$SRV_DIR" --username "$MC_USER"
 
 eula_file="$SRV_DIR/eula.txt"
 grep -q 'eula=true' "$eula_file" 2>/dev/null || \
