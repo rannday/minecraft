@@ -5,35 +5,35 @@
 
 set -euo pipefail
 trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
-[[ "${BASH_SOURCE[0]}" != "${0}" ]] && { echo "Run, don’t source."; return 1; }
+[[ "${BASH_SOURCE[0]}" != "${0}" ]] && { echo "Run, do not source."; return 1; }
 
 # === Real physical path (symlinks resolved) ===
 # Gets the real, absolute path to this script, even if it was run via a symlink
 # This is the actual directory on disk where the script lives
-SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+# SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 
 # === Invocation path (symlinks NOT resolved) ===
 # This is the path the script was called from (could be a symlink)
-ALT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# ALT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+#SRC_DIR="$SCRIPT_DIR/src"
+#source "$SRC_DIR/arch.sh"
 
 # Detect system architecture
-detect_arch() {
-  # Normalise $(uname -m)
-  case "$(uname -m)" in
-    x86_64|amd64)   printf '%s\n' 'amd64'  ;;
-    aarch64|arm64)  printf '%s\n' 'arm64'  ;;
-    armv7l|armv6l)  printf '%s\n' 'armhf'  ;;
-    ppc64le)        printf '%s\n' 'ppc64el' ;;
-    s390x)          printf '%s\n' 's390x'  ;;
-    *)              printf '%s\n' "$(uname -m)" ;;
-  esac
-}
+SYS_ARCH="$(case "$(uname -m)" in
+  x86_64|amd64)   echo amd64 ;;
+  aarch64|arm64)  echo arm64 ;;
+  armv7l|armv6l)  echo armhf ;;
+  ppc64le)        echo ppc64el ;;
+  s390x)          echo s390x ;;
+  *)              uname -m ;;
+esac)"
 
 # --------------------------------------------------------------------------------
 # Variables
 # --------------------------------------------------------------------------------
 readonly SCRIPT_VERSION=0.1
-readonly SYS_ARCH="$(detect_arch)"
+readonly SYS_ARCH
 
 # Java configuration
 REQUIRED_JAVA_VERSION="21"
@@ -79,25 +79,77 @@ fatal() { echo -e "\e[31m[FATAL]\e[0m $*" >&2; exit 1; }
 # Shared functions
 # --------------------------------------------------------------------------------
 ensure_java() {
+  # Try to locate Java in PATH
   local java_bin
-  java_bin="$(command -v java || true)"
-
-  if [[ -z "$java_bin" ]]; then
-    warn "No 'java' found on PATH."
+  if ! java_bin=$(command -v java 2>/dev/null); then
+    warn "No 'java' found in PATH."
     return 1
   fi
 
-  local ver_output ver_major
-  ver_output="$("$java_bin" -version 2>&1 | head -n1)"
-  ver_major="$(echo "$ver_output" | grep -oE 'version[[:space:]]+"([0-9]+)' | grep -oE '[0-9]+')"
+  # Try to run it — catch runtime errors
+  local ver_line exit_code
+  ver_line=$("$java_bin" -version 2>&1 | head -n1)
+  exit_code=$?
+  if [[ $exit_code -ne 0 ]]; then
+    warn "'$java_bin -version' failed to execute (exit code $exit_code)."
+    return 1
+  fi
 
+  # Make sure we got an actual version string
+  if [[ -z "$ver_line" || "$ver_line" != *version* ]]; then
+    warn "'$java_bin' did not return a recognizable version string."
+    return 1
+  fi
+
+  # Extract the major version (modern or legacy)
+  local ver_major
+  if [[ $ver_line =~ \"([0-9]+)\.([0-9]+) ]]; then
+    ver_major="${BASH_REMATCH[1]}"
+    [[ $ver_major == 1 ]] && ver_major="${BASH_REMATCH[2]}"
+  else
+    ver_major=$(awk -F\" '{print $2}' <<<"$ver_line" | cut -d. -f1)
+  fi
+
+  # Confirm it’s the right version
   if [[ "$ver_major" != "$REQUIRED_JAVA_VERSION" ]]; then
     warn "Java found at $java_bin, but version is $ver_major — expected $REQUIRED_JAVA_VERSION."
     return 1
   fi
 
-  info "Java $ver_major found at $java_bin (OK)"
+  # Final functional test — run a no-op class if paranoid
+  if ! echo 'public class Test { public static void main(String[] args) {} }' \
+       | javac -d /tmp - 2>/dev/null; then
+    warn "'javac' is missing or non-functional — JDK may be incomplete."
+    return 1
+  fi
+
+  info "Java $ver_major found at $java_bin (functional)"
   return 0
+}
+
+register_java_alternatives() {
+  local bin_dir="$1"
+  local java_path="$bin_dir/java"
+  local javac_path="$bin_dir/javac"
+
+  [[ -x "$java_path" && -x "$javac_path" ]] || \
+    fatal "Expected binaries not found in $bin_dir"
+
+  # Ensure update-alternatives is available
+  command -v update-alternatives >/dev/null || fatal "'update-alternatives' not found"
+
+  # Register if needed
+  if ! update-alternatives --query java 2>/dev/null | grep -q "Value: $java_path"; then
+    info "Registering JDK in $bin_dir via update-alternatives …"
+    sudo update-alternatives --install /usr/bin/java  java  "$java_path"  100
+    sudo update-alternatives --install /usr/bin/javac javac "$javac_path" 100
+  fi
+
+  # Set as default
+  sudo update-alternatives --set java  "$java_path"
+  sudo update-alternatives --set javac "$javac_path"
+
+  info "JDK in $bin_dir is now the active version."
 }
 
 resolve_symlink() {
@@ -140,66 +192,6 @@ get_latest_server_meta() {
   }
 
   echo "$latest_ver $server_url $sha1"
-}
-
-# Check if program is installed, with an option to install it
-require_cmds() {
-  local do_install=false
-  local missing=()
-  local args=()
-
-  # Parse optional install flag
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      -i|--install|-install) do_install=true; shift ;;
-      --) shift; break ;;
-      -*) fatal "Unknown option: $1" ;;
-      *)  args+=("$1"); shift ;;
-    esac
-  done
-
-  # Identify missing commands
-  for cmd in "${args[@]}"; do
-    if ! command -v "$cmd" &>/dev/null; then
-      missing+=("$cmd")
-    fi
-  done
-
-  # All good
-  [[ ${#missing[@]} -eq 0 ]] && return 0
-
-  # Report missing
-  warn "Missing required commands: ${missing[*]}"
-
-  # If no install requested, fail
-  if ! $do_install; then
-    fatal "Please install the missing dependencies and re-run."
-  fi
-
-  # Debian-based auto-install attempt
-  if [[ -f /etc/debian_version ]]; then
-    info "Attempting to install missing packages via apt..."
-
-    local to_install=()
-    for cmd in "${missing[@]}"; do
-      local cmd_path
-      cmd_path=$(command -v "$cmd" 2>/dev/null || true)
-
-      if [[ -n "$cmd_path" ]] && dpkg -S "$cmd_path" &>/dev/null; then
-        local pkg
-        pkg=$(dpkg -S "$cmd_path" | cut -d: -f1 | head -n1)
-        to_install+=("$pkg")
-      else
-        warn "Could not determine package for command '$cmd'; assuming package is also named '$cmd'."
-        to_install+=("$cmd")  # fallback: assume binary == package
-      fi
-    done
-
-    sudo apt-get update -qq
-    sudo apt-get install -y "${to_install[@]}"
-  else
-    fatal "Automatic install not supported on this system. Please install manually: ${missing[*]}"
-  fi
 }
 
 require_packages_apt() {
@@ -274,57 +266,57 @@ EOF
   done
 
   if "$install_java"; then
+    # Ensure Java's installed and return early if so
+    if ensure_java; then
+      return 0 
+    fi
+
     info "Installing Temurin Java $REQUIRED_JAVA_VERSION …"
 
-    # Install required packages
-    require_packages_apt --install sudo curl gnupg
+    require_packages_apt -i sudo curl gnupg 
+    local codename repo_file
+    codename="$(. /etc/os-release; echo "$VERSION_CODENAME")"
+    repo_file="/etc/apt/sources.list.d/adoptium.list"
 
-    # Runtime values
-    local codename arch
-    codename="$(awk -F= '/^VERSION_CODENAME/{print $2}' /etc/os-release)"
-    arch="$SYS_ARCH"
-
-    # Import Adoptium GPG key (once)
+    # Key
     if [[ ! -f /usr/share/keyrings/adoptium.gpg ]]; then
       curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
         | gpg --dearmor | sudo tee /usr/share/keyrings/adoptium.gpg >/dev/null
     fi
 
-    # Repo file path
-    local repo_file="/etc/apt/sources.list.d/adoptium.list"
-
-    # Add repo (once) with correct arch & codename
+    # Repo line
     if ! grep -q "packages.adoptium.net" "$repo_file" 2>/dev/null; then
-      echo "deb [arch=$arch signed-by=/usr/share/keyrings/adoptium.gpg] \
+      echo "deb [arch=$SYS_ARCH signed-by=/usr/share/keyrings/adoptium.gpg] \
   https://packages.adoptium.net/artifactory/deb $codename main" \
         | sudo tee "$repo_file" >/dev/null
     fi
 
-    # Install JDK package if missing
-    local jdk_pkg="temurin-${REQUIRED_JAVA_VERSION}-jdk"
-    if ! dpkg -s "$jdk_pkg" &>/dev/null; then
+    # Check if the java bin path exists
+    if [[ -x "${TEMURIN_JAVA_BIN_PATH}/java" ]]; then
+      register_java_alternatives "${TEMURIN_JAVA_BIN_PATH}"
+    else
+      # Install Temurin JDK (unconditionally)
+      local jdk_pkg="temurin-${REQUIRED_JAVA_VERSION}-jdk"
       sudo apt-get update -qq
       sudo apt-get install -y "$jdk_pkg"
-    else
-      info "$jdk_pkg already installed."
     fi
 
-    # Ensure this JDK is the default
-    if ! java -version 2>&1 | grep -q "version \"${REQUIRED_JAVA_VERSION}"; then
-      info "Activating Temurin $REQUIRED_JAVA_VERSION as system default …"
-      sudo update-alternatives --install /usr/bin/java  java  \
-        "${TEMURIN_JAVA_BIN_PATH}/java"  100
-      sudo update-alternatives --install /usr/bin/javac javac \
-        "${TEMURIN_JAVA_BIN_PATH}/javac" 100
-      sudo update-alternatives --set java  "${TEMURIN_JAVA_BIN_PATH}/java"
-      sudo update-alternatives --set javac "${TEMURIN_JAVA_BIN_PATH}/javac"
+    # Try to validate Java install
+    if ! ensure_java; then
+      # If validation fails, attempt to register manually
+      if [[ -x "${TEMURIN_JAVA_BIN_PATH}/java" ]]; then
+        register_java_alternatives "${TEMURIN_JAVA_BIN_PATH}"
+      else
+        fatal "Expected Java binary not found at ${TEMURIN_JAVA_BIN_PATH}/java"
+      fi
+
+      # Re-check after manual registration
+      ensure_java || fatal "Temurin Java ${REQUIRED_JAVA_VERSION} failed to activate"
     fi
 
-    # Final sanity check
-    java -version 2>&1 | grep -q "version \"${REQUIRED_JAVA_VERSION}\"" \
-      || fatal "Failed to activate Java ${REQUIRED_JAVA_VERSION}"
-    info "Temurin Java $REQUIRED_JAVA_VERSION is now active."
+    info "Temurin Java ${REQUIRED_JAVA_VERSION} is now active."
   fi
+
   exit 0
 }
 # End Install function
