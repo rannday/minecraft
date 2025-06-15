@@ -103,31 +103,33 @@ fi
 EOS
 sudo chmod +x "$START_SCRIPT"
 
-sudo tee "$SHUTDOWN_SCRIPT" >/dev/null <<'EOS'
+sudo tee "$SHUTDOWN_SCRIPT" >/dev/null <<EOS
 #!/usr/bin/env bash
 set -euo pipefail
-SESSION="mc-$MC_NAME"
-tmux -L "$MC_USER" has-session -t "$SESSION" 2>/dev/null || exit 0
-tmux -L "$MC_USER" send-keys -t "$SESSION" "say Server shutting down in 15 seconds..." C-m
+SESSION="mc-${MC_NAME}"
+SOCKET="${MC_USER}"
+tmux -L "$SOCKET" has-session -t "$SESSION" 2>/dev/null || exit 0
+tmux -L "$SOCKET" send-keys -t "$SESSION" "say Server shutting down in 15 seconds..." C-m
 sleep 15
-tmux -L "$MC_USER" send-keys -t "$SESSION" "save-all" C-m
-tmux -L "$MC_USER" send-keys -t "$SESSION" "stop" C-m
-while tmux -L "$MC_USER" has-session -t "$SESSION" 2>/dev/null; do
+tmux -L "$SOCKET" send-keys -t "$SESSION" "save-all" C-m
+tmux -L "$SOCKET" send-keys -t "$SESSION" "stop" C-m
+while tmux -L "$SOCKET" has-session -t "$SESSION" 2>/dev/null; do
   sleep 1
 done
 EOS
 sudo chmod +x "$SHUTDOWN_SCRIPT"
 
-sudo tee "$RESTART_SCRIPT" >/dev/null <<'EOS'
+sudo tee "$RESTART_SCRIPT" >/dev/null <<EOS
 #!/usr/bin/env bash
 set -euo pipefail
-SESSION="mc-$MC_NAME"
-tmux -L "$MC_USER" has-session -t "$SESSION" 2>/dev/null || exit 0
-tmux -L "$MC_USER" send-keys -t "$SESSION" "say Server restarting in 15 seconds..." C-m
+SESSION="mc-${MC_NAME}"
+SOCKET="${MC_USER}"
+tmux -L "$SOCKET" has-session -t "$SESSION" 2>/dev/null || exit 0
+tmux -L "$SOCKET" send-keys -t "$SESSION" "say Server restarting in 15 seconds..." C-m
 sleep 15
-tmux -L "$MC_USER" send-keys -t "$SESSION" "save-all" C-m
-tmux -L "$MC_USER" send-keys -t "$SESSION" "stop" C-m
-while tmux -L "$MC_USER" has-session -t "$SESSION" 2>/dev/null; do
+tmux -L "$SOCKET" send-keys -t "$SESSION" "save-all" C-m
+tmux -L "$SOCKET" send-keys -t "$SESSION" "stop" C-m
+while tmux -L "$SOCKET" has-session -t "$SESSION" 2>/dev/null; do
   sleep 1
 done
 EOS
@@ -149,4 +151,6 @@ else
   echo -e "\nTemplates and shutdown script generated for \"$MC_NAME\""
   echo "   • To start: sudo systemctl enable --now $SERVICE_NAME"
   echo "   • To check: sudo systemctl status $SERVICE_NAME"
+  echo "   • Timer   : systemctl list-timers | grep $MC_NAME"
+  echo "   • Console : sudo -u $MC_USER tmux attach -t mc-$MC_NAME"
 fi
