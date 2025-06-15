@@ -60,15 +60,8 @@ ProtectSystem=full
 ProtectHome=true
 NoNewPrivileges=true
 
-ExecStart=/usr/bin/tmux new-session -s mc-%%i -d /bin/bash -c '\
-  cd "'"$SRV_BASE"'/%%i" && \
-  if [[ -f jvm.args ]]; then \
-    exec /usr/bin/java @jvm.args -jar server.jar nogui; \
-  else \
-    exec /usr/bin/java -jar server.jar nogui; \
-  fi'
-
-ExecStop=${SRV_BASE}/%%i/mc-shutdown.sh mc-%%i
+ExecStart=/usr/bin/tmux new-session -s mc-%%i -d $SRV_BASE/%%i/mc-start.sh
+ExecStop=$SRV_BASE/%%i/mc-shutdown.sh mc-%%i
 ExecStopPost=/usr/bin/tmux kill-session -t mc-%%i
 
 Restart=on-failure
@@ -110,6 +103,22 @@ tmux send-keys -t "$SESSION" "save-all" C-m
 tmux send-keys -t "$SESSION" "stop" C-m
 EOS
 sudo chmod +x "$SHUTDOWN_SCRIPT"
+
+sudo tee "$START_SCRIPT" >/dev/null <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+
+INSTANCE_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$INSTANCE_DIR"
+
+if [[ -f jvm.args ]]; then
+  exec /usr/bin/java @jvm.args -jar server.jar nogui
+else
+  exec /usr/bin/java -jar server.jar nogui
+fi
+EOS
+sudo chmod +x "$START_SCRIPT"
+
 
 sudo systemctl daemon-reexec
 sudo systemctl daemon-reload
