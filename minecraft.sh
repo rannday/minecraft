@@ -16,9 +16,54 @@ SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 # This is the path the script was called from (could be a symlink)
 ALT_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Detect system architecture
+detect_arch() {
+  # Normalise $(uname -m)
+  case "$(uname -m)" in
+    x86_64|amd64)   printf '%s\n' 'amd64'  ;;
+    aarch64|arm64)  printf '%s\n' 'arm64'  ;;
+    armv7l|armv6l)  printf '%s\n' 'armhf'  ;;
+    ppc64le)        printf '%s\n' 'ppc64el' ;;
+    s390x)          printf '%s\n' 's390x'  ;;
+    *)              printf '%s\n' "$(uname -m)" ;;
+  esac
+}
+
 # --------------------------------------------------------------------------------
 # Variables
-SCRIPT_VERSION=0.1
+# --------------------------------------------------------------------------------
+readonly SCRIPT_VERSION=0.1
+readonly SYS_ARCH="$(detect_arch)"
+
+# Java configuration
+REQUIRED_JAVA_VERSION="21"
+readonly TEMURIN_JAVA_BIN_PATH="/usr/lib/jvm/temurin-${REQUIRED_JAVA_VERSION}-jdk-${SYS_ARCH}/bin"
+
+# Minecraft base configuration
+MC_NAME="vanilla"
+MC_USER="minecraft"
+MC_HOME="/srv/minecraft"
+MC_BIN="$MC_HOME/bin"
+MC_INSTANCES="$MC_HOME/instances"
+MC_BACKUPS="$MC_HOME/backups"
+
+# Default runtime settings (can be overridden)
+MC_MOTD="Minecraft Server"
+MC_PORT=25565
+MC_RAM="4G"
+MC_GAMEMODE="survival"
+MC_PVP="true"
+MC_WHITELIST=""
+# RAM to player ratio
+MC_RAM_RATIO=1
+
+# URL for Mojang manifest
+readonly MC_VERSION_MANIFEST_URL="https://piston-meta.mojang.com/mc/game/version_manifest.json"
+# End variables
+# --------------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------------
+# Some early sanity checks
 # --------------------------------------------------------------------------------
 
 # --------------------------------------------------------------------------------
@@ -31,11 +76,258 @@ error() { echo -e "\e[31m[ERROR]\e[0m $*"; }
 fatal() { echo -e "\e[31m[FATAL]\e[0m $*" >&2; exit 1; }
 
 # --------------------------------------------------------------------------------
+# Shared functions
+# --------------------------------------------------------------------------------
+ensure_java() {
+  local java_bin
+  java_bin="$(command -v java || true)"
+
+  if [[ -z "$java_bin" ]]; then
+    warn "No 'java' found on PATH."
+    return 1
+  fi
+
+  local ver_output ver_major
+  ver_output="$("$java_bin" -version 2>&1 | head -n1)"
+  ver_major="$(echo "$ver_output" | grep -oE 'version[[:space:]]+"([0-9]+)' | grep -oE '[0-9]+')"
+
+  if [[ "$ver_major" != "$REQUIRED_JAVA_VERSION" ]]; then
+    warn "Java found at $java_bin, but version is $ver_major — expected $REQUIRED_JAVA_VERSION."
+    return 1
+  fi
+
+  info "Java $ver_major found at $java_bin (OK)"
+  return 0
+}
+
+resolve_symlink() {
+  local target=$1
+  cd "$(dirname "$target")" || return 1
+  target=$(basename "$target")
+
+  # Follow symlinks until we reach the real file
+  while [ -L "$target" ]; do
+    target=$(readlink "$target")
+    cd "$(dirname "$target")" || return 1
+    target=$(basename "$target")
+  done
+
+  # Get the absolute path
+  echo "$(pwd -P)/$target"
+}
+
+get_latest_server_meta() {
+  local manifest_url="$MC_VERSION_MANIFEST_URL"
+  local latest_ver
+  local meta_url
+
+  latest_ver=$(curl -s "$manifest_url" | jq -r '.latest.release')
+  meta_url=$(curl -s "$manifest_url" | \
+             jq -r --arg ver "$latest_ver" '.versions[] | select(.id == $ver) | .url')
+
+  if [[ -z "$meta_url" ]]; then
+    echo "Error: could not resolve metadata URL for $latest_ver" >&2
+    return 1
+  fi
+
+  local server_url sha1
+  read -r server_url sha1 <<<"$(curl -s "$meta_url" | \
+        jq -r '.downloads.server | "\(.url) \(.sha1)"')"
+
+  [[ -n "$server_url" && -n "$sha1" ]] || {
+    echo "Error: incomplete server metadata" >&2
+    return 1
+  }
+
+  echo "$latest_ver $server_url $sha1"
+}
+
+# Check if program is installed, with an option to install it
+require_cmds() {
+  local do_install=false
+  local missing=()
+  local args=()
+
+  # Parse optional install flag
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -i|--install|-install) do_install=true; shift ;;
+      --) shift; break ;;
+      -*) fatal "Unknown option: $1" ;;
+      *)  args+=("$1"); shift ;;
+    esac
+  done
+
+  # Identify missing commands
+  for cmd in "${args[@]}"; do
+    if ! command -v "$cmd" &>/dev/null; then
+      missing+=("$cmd")
+    fi
+  done
+
+  # All good
+  [[ ${#missing[@]} -eq 0 ]] && return 0
+
+  # Report missing
+  warn "Missing required commands: ${missing[*]}"
+
+  # If no install requested, fail
+  if ! $do_install; then
+    fatal "Please install the missing dependencies and re-run."
+  fi
+
+  # Debian-based auto-install attempt
+  if [[ -f /etc/debian_version ]]; then
+    info "Attempting to install missing packages via apt..."
+
+    local to_install=()
+    for cmd in "${missing[@]}"; do
+      local cmd_path
+      cmd_path=$(command -v "$cmd" 2>/dev/null || true)
+
+      if [[ -n "$cmd_path" ]] && dpkg -S "$cmd_path" &>/dev/null; then
+        local pkg
+        pkg=$(dpkg -S "$cmd_path" | cut -d: -f1 | head -n1)
+        to_install+=("$pkg")
+      else
+        warn "Could not determine package for command '$cmd'; assuming package is also named '$cmd'."
+        to_install+=("$cmd")  # fallback: assume binary == package
+      fi
+    done
+
+    sudo apt-get update -qq
+    sudo apt-get install -y "${to_install[@]}"
+  else
+    fatal "Automatic install not supported on this system. Please install manually: ${missing[*]}"
+  fi
+}
+
+require_packages_apt() {
+  local do_install=false
+  local missing=()
+  local pkgs=()
+
+  # Flag parsing
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -i|--install|-install) do_install=true; shift ;;
+      --) shift; break ;;
+      -*) fatal "Unknown option: $1" ;;
+      *)  pkgs+=("$1"); shift ;;
+    esac
+  done
+
+  # Detect missing packages
+  for pkg in "${pkgs[@]}"; do
+    if ! dpkg -s "$pkg" &>/dev/null; then
+      missing+=("$pkg")
+    fi
+  done
+
+  # All present
+  [[ ${#missing[@]} -eq 0 ]] && return 0
+
+  warn "Missing APT packages: ${missing[*]}"
+
+  # If no --install flag → fail
+  if ! $do_install; then
+    fatal "Install them manually or re-run with --install."
+  fi
+
+  # Abort on non-Debian systems
+  [[ -f /etc/debian_version ]] \
+    || fatal "Auto-install only supported on Debian/Ubuntu systems."
+
+  info "Installing: ${missing[*]}"
+  sudo apt-get update -qq
+  sudo apt-get install -y "${missing[@]}"
+}
+# End shared functions
+# --------------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------------
 # Install function
 # --------------------------------------------------------------------------------
 install() {
-  warn "Not yet implemented: install"
-  exit 1
+  local install_java=false
+
+  # Parse options
+  local TEMP
+  TEMP=$(getopt -o h --long help,java -n 'install' -- "$@") || exit 1
+  eval set -- "$TEMP"
+
+  while true; do
+    case "$1" in
+      --java) install_java=true; shift ;;
+      -h|--help)
+        cat <<EOF
+Usage: $(basename "$0") install [options]
+
+Options:
+  --java       Install Temurin Java ${REQUIRED_JAVA_VERSION}
+  -h, --help   Show this help message
+EOF
+        return 0 ;;
+      --) shift; break ;;
+      *)  fatal "Unexpected option $1" ;;
+    esac
+  done
+    
+  require_packages_apt -i curl gnupg
+
+  if "$install_java"; then
+    info "Installing Temurin Java $REQUIRED_JAVA_VERSION …"
+
+    # Ensure required tooling
+    require_cmds --install sudo curl wget apt-transport-https
+
+    # Runtime values
+    local codename arch
+    codename="$(awk -F= '/^VERSION_CODENAME/{print $2}' /etc/os-release)"
+    arch="$SYS_ARCH"          # already normalised by detect_arch()
+
+    # Import Adoptium GPG key (once)
+    if [[ ! -f /usr/share/keyrings/adoptium.gpg ]]; then
+      curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
+        | gpg --dearmor | sudo tee /usr/share/keyrings/adoptium.gpg >/dev/null
+    fi
+
+    # Repo file path
+    local repo_file="/etc/apt/sources.list.d/adoptium.list"
+
+    # Add repo (once) with correct arch & codename
+    if ! grep -q "packages.adoptium.net" "$repo_file" 2>/dev/null; then
+      echo "deb [arch=$arch signed-by=/usr/share/keyrings/adoptium.gpg] \
+  https://packages.adoptium.net/artifactory/deb $codename main" \
+        | sudo tee "$repo_file" >/dev/null
+    fi
+
+    # Install JDK package if missing
+    local jdk_pkg="temurin-${REQUIRED_JAVA_VERSION}-jdk"
+    if ! dpkg -s "$jdk_pkg" &>/dev/null; then
+      sudo apt-get update -qq
+      sudo apt-get install -y "$jdk_pkg"
+    else
+      info "$jdk_pkg already installed."
+    fi
+
+    # Ensure this JDK is the default
+    if ! java -version 2>&1 | grep -q "version \"${REQUIRED_JAVA_VERSION}"; then
+      info "Activating Temurin $REQUIRED_JAVA_VERSION as system default …"
+      sudo update-alternatives --install /usr/bin/java  java  \
+        "${TEMURIN_JAVA_BIN_PATH}/java"  100
+      sudo update-alternatives --install /usr/bin/javac javac \
+        "${TEMURIN_JAVA_BIN_PATH}/javac" 100
+      sudo update-alternatives --set java  "${TEMURIN_JAVA_BIN_PATH}/java"
+      sudo update-alternatives --set javac "${TEMURIN_JAVA_BIN_PATH}/javac"
+    fi
+
+    # Final sanity check
+    java -version 2>&1 | grep -q "version \"${REQUIRED_JAVA_VERSION}\"" \
+      || fatal "Failed to activate Java ${REQUIRED_JAVA_VERSION}"
+    info "Temurin Java $REQUIRED_JAVA_VERSION is now active."
+  fi
+  exit 0
 }
 # End Install function
 # --------------------------------------------------------------------------------
@@ -46,7 +338,7 @@ install() {
 # --------------------------------------------------------------------------------
 uninstall() {
   warn "Not yet implemented: uninstall"
-  exit 1
+  exit 0
 }
 # End Uninstall function
 # --------------------------------------------------------------------------------
@@ -55,11 +347,184 @@ uninstall() {
 # Setup function
 # --------------------------------------------------------------------------------
 setup() {
-  warn "Not yet implemented: setup"
-  exit 1
+
+  # getopt parser
+  local TEMP
+  TEMP=$(getopt -o h --long \
+    help,name:,user:,home:,motd:,port:,ram:,gamemode:,pvp:,whitelist:,ram-ratio: \
+    -n 'setup' -- "$@") || exit 1
+  eval set -- "$TEMP"
+
+  while true; do
+    case "$1" in
+      --name)        MC_NAME="$2";       shift 2 ;;
+      --user)        MC_USER="$2";       shift 2 ;;
+      --home)        MC_HOME="$2";       shift 2 ;;
+      --motd)        MC_MOTD="$2";       shift 2 ;;
+      --port)        MC_PORT="$2";       shift 2 ;;
+      --ram)         MC_RAM="$2";        shift 2 ;;
+      --gamemode)    MC_GAMEMODE="$2";   shift 2 ;;
+      --pvp)         MC_PVP="$2";        shift 2 ;;
+      --whitelist)   MC_WHITELIST="$2";  shift 2 ;;
+      --ram-ratio)   MC_RAM_RATIO="$2";  shift 2 ;;
+      -h|--help)
+        cat <<EOF
+Usage: $(basename "$0") setup [options]
+
+User / layout
+  --user      USER    System user                 (default: $MC_USER)
+  --home      DIR     Base dir                    (default: $MC_HOME)
+
+Instance
+  --name      NAME    Instance name               (default: $MC_NAME)
+  --motd      TEXT    MOTD                        (default: "$MC_MOTD")
+  --port      NUM     TCP port                    (default: $MC_PORT)
+  --ram       SIZE    Heap (-Xms/-Xmx)            (default: $MC_RAM)
+  --gamemode  MODE    survival|creative|adventure (default: $MC_GAMEMODE)
+  --pvp       BOOL    true|false                  (default: $MC_PVP)
+  --whitelist LIST    Comma-sep player list       (default: disabled)
+  --ram-ratio NUM     Players per GiB             (default: $MC_RAM_RATIO)
+EOF
+        exit 0 ;;
+      --) shift; break ;;
+      *)  fatal "Unexpected option $1" ;;
+    esac
+  done
+
+  # Gamemode check
+  [[ "$MC_GAMEMODE" =~ ^(survival|creative|adventure)$ ]] \
+    || fatal "Invalid --gamemode '$MC_GAMEMODE'"
+
+  # Port check
+  if ! [[ "$MC_PORT" =~ ^[0-9]+$ ]] || (( MC_PORT < 1024 || MC_PORT > 65535 )); then
+    fatal "Invalid --port '$MC_PORT'. Must be a number between 1024–65535."
+  fi
+  if ss -tln | awk '{print $4}' | grep -qE "(:|\.)${MC_PORT}\$"; then
+  fatal "Port $MC_PORT is already in use. Choose a different port using --port
+
+To see what's using the port:
+  sudo lsof -iTCP:$MC_PORT -sTCP:LISTEN
+  sudo ss -tuln | grep $MC_PORT"
+fi
+
+  local SRV_DIR="${MC_INSTANCES}/${MC_NAME}"
+  local SRV_JAR="${SRV_DIR}/server.jar"
+  local JVM_ARGS_FILE="${SRV_DIR}/jvm.args"
+  local META_ENV_FILE="${SRV_DIR}/meta.env"
+
+  # players/GiB -> max-players
+  local mem unit players
+  if [[ "$MC_RAM" =~ ^([0-9]+)([GgMm])$ ]]; then
+    mem="${BASH_REMATCH[1]}"
+    unit="${BASH_REMATCH[2]}"
+    [[ "$unit" =~ [Mm] ]] && mem=$(( mem / 1024 ))
+    (( mem < 1 )) && mem=1
+    (( MC_RAM_RATIO < 1 )) && MC_RAM_RATIO=1
+    players=$(( mem * MC_RAM_RATIO ))
+    (( players > 100 )) && players=100
+  else
+    players=10
+    warn "Could not parse --ram; defaulting max-players=${players}"
+  fi
+
+  # Ensure user and directories exist
+  if getent passwd "$MC_USER" >/dev/null 2>&1; then
+    current_home="$(getent passwd "$MC_USER" | cut -d: -f6)"
+    if [[ "$current_home" != "$MC_HOME" ]]; then
+      fatal "User '$MC_USER' already exists with home '$current_home', \
+Expected: '$MC_HOME'
+
+Fix it manually using one of the following:
+
+  • Change home:
+      sudo usermod -d $MC_HOME -m $MC_USER
+
+  • Or delete and recreate:
+      sudo /sbin/deluser --remove-home $MC_USER
+      sudo /sbin/delgroup --only-if-empty $MC_USER
+
+  • Then verify:
+      getent passwd $MC_USER
+      getent group  $MC_USER"
+    fi
+    info "Using existing user '$MC_USER' (home: $current_home)"
+  else
+    info "Creating system user '$MC_USER' with home '$MC_HOME'"
+    sudo adduser --system --home "$MC_HOME" --shell /bin/bash --group "$MC_USER"
+  fi
+  sudo mkdir -p "$MC_HOME" "$MC_BIN" "$MC_BACKUPS" "$SRV_DIR"
+  sudo chown -R "$MC_USER:$MC_USER" "$MC_HOME"
+
+  # Setup Java if needed
+  [[ -x "${TEMURIN_JAVA_BIN_PATH}/java" ]] \
+    || fatal "Required Java ${REQUIRED_JAVA_VERSION} not found at ${TEMURIN_JAVA_BIN_PATH}"
+
+  # Download Minecraft server JAR if needed
+  [[ -f "${MC_BIN}/download.sh" ]] && "${MC_BIN}/download.sh" -t "$SRV_DIR" -u "$MC_USER"
+
+  # Link newest minecraft_server_*.jar -> server.jar
+  local latest
+  latest=$(find "$SRV_DIR" -maxdepth 1 -name 'minecraft_server_*.jar' | sort -Vr | head -n1)
+  [[ -n "$latest" ]] && sudo -u "$MC_USER" ln -sf "$(basename "$latest")" "$SRV_JAR"
+
+  # Accept EULA
+  sudo -u "$MC_USER" bash -c "echo 'eula=true' > '${SRV_DIR}/eula.txt'"
+
+  # Setup server.properties
+  local wl_enabled=false
+  [[ -n "${MC_WHITELIST:-}" ]] && wl_enabled=true
+  sudo -u "$MC_USER" tee "${SRV_DIR}/server.properties" >/dev/null <<EOF
+enforce-whitelist=${wl_enabled}
+force-gamemode=true
+gamemode=${MC_GAMEMODE}
+max-players=${players}
+online-mode=true
+pvp=${MC_PVP}
+server-port=${MC_PORT}
+white-list=${wl_enabled}
+motd=${MC_MOTD}
+EOF
+
+  # Setup JVM arguments file
+  sudo -u "$MC_USER" tee "$JVM_ARGS_FILE" >/dev/null <<EOF
+-Xms${MC_RAM}
+-Xmx${MC_RAM}
+-XX:+UseG1GC
+-XX:+ParallelRefProcEnabled
+-XX:MaxGCPauseMillis=200
+-XX:+UnlockExperimentalVMOptions
+-XX:+DisableExplicitGC
+-XX:+AlwaysPreTouch
+-XX:G1NewSizePercent=30
+-XX:G1MaxNewSizePercent=40
+-XX:G1HeapRegionSize=16M
+-XX:G1ReservePercent=20
+-XX:G1HeapWastePercent=5
+-XX:G1MixedGCCountTarget=4
+-XX:InitiatingHeapOccupancyPercent=15
+-XX:SurvivorRatio=32
+-XX:+PerfDisableSharedMem
+-XX:MaxTenuringThreshold=1
+-Dusing.aikars.flags=https://mcflags.emc.gs
+-Daikars.new.flags=true
+EOF
+
+  # Setup metadata file
+  cat <<EOF | sudo -u "$MC_USER" tee "$META_ENV_FILE" >/dev/null
+NAME=$MC_NAME
+PORT=$MC_PORT
+MOTD="$MC_MOTD"
+RAM=$MC_RAM
+GAMEMODE=$MC_GAMEMODE
+WHITELIST=$MC_WHITELIST
+EOF
+
+  info "Setup complete — instance files in ${SRV_DIR}"
+  info "Start with: sudo -u ${MC_USER} ${TEMURIN_JAVA_BIN_PATH}/java \$(cat ${JVM_ARGS_FILE}) -jar ${SRV_JAR} nogui"
 }
 # End Setup function
 # --------------------------------------------------------------------------------
+
 
 # --------------------------------------------------------------------------------
 # Run function
@@ -75,8 +540,34 @@ run() {
 # Download function
 # --------------------------------------------------------------------------------
 download() {
-  warn "Not yet implemented: download"
-  exit 1
+  
+  # getopt parser
+  local TEMP
+  TEMP=$(getopt -o ht:u: --long help,target:,user: -n 'download' -- "$@") || return 1
+  eval set -- "$TEMP"
+
+  while true; do
+    case "$1" in
+      -t|--target) srv_dir="$2"; shift 2 ;;
+      -u|--user)   mc_user="$2"; shift 2 ;;
+      -h|--help)
+        cat <<EOF
+Usage: $(basename "$0") download [options]
+
+  -t, --target DIR   Destination directory (default: \$SRV_DIR)
+  -u, --user   USER  Run curl as USER (default: \$MC_USER)
+  -h, --help         Show this help and exit
+EOF
+        return 0 ;;
+      --) shift; break ;;
+      *)  fatal "Unexpected option $1" ;;
+    esac
+  done
+
+  [[ -d "$srv_dir" ]] || fatal "Target directory '$srv_dir' does not exist."
+  [[ $(id -u "$mc_user" 2>/dev/null || true) ]] || fatal "User '$mc_user' not found."
+
+  exit 0
 }
 # End Download function
 # --------------------------------------------------------------------------------
@@ -98,7 +589,7 @@ Commands:
   run,        Run a Minecraft server
   download,   Download the latest Minecraft server JAR
   version,    Show the current version of the script
-  help,       Can show sub-help menus (e.g. --setup --help)
+  help,       Can show sub-help menus (e.g. setup -h)
 EOF
 }
 
