@@ -36,6 +36,7 @@ done
 
 SRV_DIR="$SRV_BASE/$MC_NAME"
 SHUTDOWN_SCRIPT="$SRV_DIR/mc-shutdown.sh"
+START_SCRIPT="$SRV_DIR/mc-start.sh"
 INSTANCE_UNIT="minecraft@${MC_NAME}.service"
 REBOOT_TIMER="minecraft-reboot@${MC_NAME}.timer"
 SYSTEMD_DIR="/etc/systemd/system"
