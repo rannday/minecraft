@@ -63,7 +63,7 @@ NoNewPrivileges=true
 ExecStart=/usr/bin/tmux new-session -s mc-%%i -d /bin/bash -c '\
   cd "'"$SRV_BASE"'/%%i" && \
   args=""; [[ -f jvm.args ]] && args="@jvm.args"; \
-  exec /usr/bin/java $args -jar server.jar nogui'
+  exec /usr/bin/java \$args -jar server.jar nogui'
 
 ExecStop=${SRV_BASE}/%%i/mc-shutdown.sh mc-%%i
 ExecStopPost=/usr/bin/tmux kill-session -t mc-%%i
