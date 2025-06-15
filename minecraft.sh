@@ -79,29 +79,19 @@ fatal() { echo -e "\e[31m[FATAL]\e[0m $*" >&2; exit 1; }
 # Shared functions
 # --------------------------------------------------------------------------------
 ensure_java() {
-  # Try to locate Java in PATH
   local java_bin
   if ! java_bin=$(command -v java 2>/dev/null); then
     warn "No 'java' found in PATH."
     return 1
   fi
 
-  # Try to run it — catch runtime errors
-  local ver_line exit_code
+  local ver_line
   ver_line=$("$java_bin" -version 2>&1 | head -n1)
-  exit_code=$?
-  if [[ $exit_code -ne 0 ]]; then
-    warn "'$java_bin -version' failed to execute (exit code $exit_code)."
-    return 1
-  fi
-
-  # Make sure we got an actual version string
   if [[ -z "$ver_line" || "$ver_line" != *version* ]]; then
     warn "'$java_bin' did not return a recognizable version string."
     return 1
   fi
 
-  # Extract the major version (modern or legacy)
   local ver_major
   if [[ $ver_line =~ \"([0-9]+)\.([0-9]+) ]]; then
     ver_major="${BASH_REMATCH[1]}"
@@ -110,20 +100,12 @@ ensure_java() {
     ver_major=$(awk -F\" '{print $2}' <<<"$ver_line" | cut -d. -f1)
   fi
 
-  # Confirm it’s the right version
   if [[ "$ver_major" != "$REQUIRED_JAVA_VERSION" ]]; then
     warn "Java found at $java_bin, but version is $ver_major — expected $REQUIRED_JAVA_VERSION."
     return 1
   fi
 
-  # Final functional test — run a no-op class if paranoid
-  if ! echo 'public class Test { public static void main(String[] args) {} }' \
-       | javac -d /tmp - 2>/dev/null; then
-    warn "'javac' is missing or non-functional — JDK may be incomplete."
-    return 1
-  fi
-
-  info "Java $ver_major found at $java_bin (functional)"
+  info "Java $ver_major found at $java_bin (OK)"
   return 0
 }
 
