@@ -103,7 +103,7 @@ fi
 EOS
 sudo chmod +x "$START_SCRIPT"
 
-sudo tee "$SHUTDOWN_SCRIPT" >/dev/null <<EOS
+sudo tee "$SHUTDOWN_SCRIPT" >/dev/null <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
 SESSION="mc-$MC_NAME"
@@ -118,7 +118,7 @@ done
 EOS
 sudo chmod +x "$SHUTDOWN_SCRIPT"
 
-sudo tee "$RESTART_SCRIPT" >/dev/null <<EOS
+sudo tee "$RESTART_SCRIPT" >/dev/null <<'EOS'
 #!/usr/bin/env bash
 set -euo pipefail
 SESSION="mc-$MC_NAME"
