@@ -9,66 +9,49 @@ source "$SRC_DIR/env.sh"
 
 print_usage() {
   cat <<EOF
-Usage: $(basename "$0") [--mode MODE]
+Usage: $(basename "$0") [option]
 
 Options:
-  --mode, -m MODE   Server mode to uninstall (default: \$MC_GAMEMODE)
+  --name, -n NAME  Server name to uninstall (default: \$MC_NAME)
   --help, -h       
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --mode|-m) MODE="$2"; shift ;;
+    --name|-n) MC_NAME="$2"; shift 2 ;;
     --help|-h) print_usage; exit 0 ;;
     *) echo "Unknown option: $1"; print_usage; exit 1 ;;
   esac
-  shift
 done
 
-# Use default if not explicitly passed
-MODE="${MODE:-$MC_GAMEMODE}"
+SERVICE_NAME="minecraft@${MC_NAME}.service"
+REBOOT_TIMER_NAME="minecraft-reboot@${MC_NAME}.timer"
+TMUX_SESSION_NAME="mc-${MC_NAME}"
+SRV_DIR="${SRV_BASE}/${MC_NAME}"
 
-case "$MODE" in
-  survival|creative|adventure) ;;
-  *) echo "Invalid mode: $MODE"; print_usage; exit 1 ;;
-esac
-
-MC_GAMEMODE="$MODE"
-
-SERVICE_NAME="mc-${MC_GAMEMODE}"
-SERVICE="${SERVICE_NAME}.service"
-REBOOT_TIMER="${SERVICE_NAME}-reboot.timer"
-REBOOT_SERVICE="${SERVICE_NAME}-reboot.service"
-TMUX_SESSION="$SERVICE_NAME"
-SRV_DIR="${SRV_BASE}/${MC_GAMEMODE}"
-
-echo "Uninstalling Minecraft server for mode: $MC_GAMEMODE"
-echo "Service       : $SERVICE"
-echo "Reboot timer  : $REBOOT_TIMER"
-echo "Tmux session  : $TMUX_SESSION"
+echo "Uninstalling Minecraft server - $MC_NAME"
+echo "Service       : $SERVICE_NAME"
+echo "Reboot timer  : $REBOOT_TIMER_NAME"
+echo "Tmux session  : $TMUX_SESSION_NAME"
 echo "Server dir    : $SRV_DIR"
 echo
 
-for UNIT in "$REBOOT_TIMER" "$SERVICE"; do
-  if systemctl list-unit-files --quiet "$UNIT"; then
-    echo "Disabling $UNIT"
-    sudo systemctl disable --now "$UNIT" || true
-  fi
-done
-sudo rm -f "/etc/systemd/system/$SERVICE" \
-           "/etc/systemd/system/$REBOOT_TIMER" \
-           "/etc/systemd/system/$REBOOT_SERVICE"
+sudo systemctl disable --now "$SERVICE_NAME" \
+                             "$REBOOT_TIMER_NAME"
 
 sudo systemctl daemon-reload
 sudo systemctl reset-failed
 
-if sudo -u "$MC_USER" tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+if sudo -u "$MC_USER" tmux -L "$MC_USER" has-session -t "$TMUX_SESSION_NAME" 2>/dev/null; then
   echo "Force-killing lingering tmux session"
-  sudo -u "$MC_USER" tmux kill-session -t "$TMUX_SESSION"
+  sudo -u "$MC_USER" tmux -L "$MC_USER" kill-session -t "$TMUX_SESSION_NAME"
 fi
 
 if [[ -d "$SRV_DIR" ]]; then
   echo "Removing $SRV_DIR"
   sudo rm -rf "$SRV_DIR"
 fi
+
+echo "Uninstall complete."
+exit 0
