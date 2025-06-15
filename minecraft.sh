@@ -272,19 +272,17 @@ EOF
       *)  fatal "Unexpected option $1" ;;
     esac
   done
-    
-  require_packages_apt -i curl gnupg
 
   if "$install_java"; then
     info "Installing Temurin Java $REQUIRED_JAVA_VERSION …"
 
-    # Ensure required tooling
-    require_cmds --install sudo curl wget apt-transport-https
+    # Install required packages
+    require_packages_apt --install sudo curl gnupg
 
     # Runtime values
     local codename arch
     codename="$(awk -F= '/^VERSION_CODENAME/{print $2}' /etc/os-release)"
-    arch="$SYS_ARCH"          # already normalised by detect_arch()
+    arch="$SYS_ARCH"
 
     # Import Adoptium GPG key (once)
     if [[ ! -f /usr/share/keyrings/adoptium.gpg ]]; then
