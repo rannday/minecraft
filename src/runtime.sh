@@ -61,7 +61,7 @@ ProtectSystem=full
 ProtectHome=true
 NoNewPrivileges=true
 
-ExecStart=/usr/bin/tmux new-session -s mc-%%i -d $SRV_BASE/%%i/mc-start.sh
+ExecStart=/usr/bin/env tmux new-session -s mc-%%i -d $SRV_BASE/%%i/mc-start.sh
 ExecStop=$SRV_BASE/%%i/mc-shutdown.sh mc-%%i
 ExecStopPost=/usr/bin/tmux kill-session -t mc-%%i
 
