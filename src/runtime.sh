@@ -34,45 +34,44 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+command -v java >/dev/null || { echo "Error: java not found"; exit 1; }
+
 SRV_DIR="$SRV_BASE/$MC_NAME"
-SHUTDOWN_SCRIPT="$SRV_DIR/mc-shutdown.sh"
+[[ -d "$SRV_DIR" ]] || { echo "Error: No such server dir: $SRV_DIR"; exit 1; }
+
 START_SCRIPT="$SRV_DIR/mc-start.sh"
-INSTANCE_UNIT="minecraft@${MC_NAME}.service"
-REBOOT_TIMER="minecraft-reboot@${MC_NAME}.timer"
+SHUTDOWN_SCRIPT="$SRV_DIR/mc-shutdown.sh"
+RESTART_SCRIPT="$SRV_DIR/mc-restart.sh"
+
 SYSTEMD_DIR="/etc/systemd/system"
+SERVICE_NAME="minecraft@${MC_NAME}.service"
+REBOOT_TIMER_NAME="minecraft-reboot@${MC_NAME}.timer"
 TEMPLATE_UNIT="$SYSTEMD_DIR/minecraft@.service"
 TEMPLATE_TIMER="$SYSTEMD_DIR/minecraft-reboot@.timer"
 
-[[ -d $SRV_DIR ]] || { echo "[error] No such server dir: $SRV_DIR"; exit 1; }
-command -v java >/dev/null || { echo "[error] java not found"; exit 1; }
-
 if [[ ! -f "$TEMPLATE_UNIT" ]]; then
-  echo "[init] Writing template: $TEMPLATE_UNIT"
+  echo "Writing template: $TEMPLATE_UNIT"
   sudo tee "$TEMPLATE_UNIT" >/dev/null <<EOF
 [Unit]
-Description=Minecraft server – %%i
+Description=Minecraft server - %%i
 After=network.target
 
 [Service]
 Type=forking
 User=$MC_USER
-WorkingDirectory=$SRV_BASE/%%i
-ProtectSystem=full
-ProtectHome=true
+Group=$MC_USER
 NoNewPrivileges=true
-
-ExecStart=/bin/bash -c '/usr/bin/env tmux new-session -s mc-%i -d "$SRV_BASE/%i/mc-start.sh"'
-ExecStop=$SRV_BASE/%%i/mc-shutdown.sh mc-%%i
-ExecStopPost=/usr/bin/tmux kill-session -t mc-%%i
-
+WorkingDirectory=%h/server/%i
+ExecStartPre=%h/server/%i/mc-restart.sh
+ExecStart=/usr/bin/env tmux -L $MC_USER new-session -s mc-%i -d /usr/bin/env bash %h/server/%i/mc-start.sh
+ExecStop=%h/server/%i/mc-shutdown.sh mc-%i
+ExecStopPost=/usr/bin/env tmux -L $MC_USER kill-session -t mc-%i || true
+ExecReload=/usr/bin/env tmux -L $MC_USER send-keys -t mc-%i "reload" C-m
 Restart=on-failure
 RestartSec=5
 SuccessExitStatus=0 1 143
 TimeoutStopSec=45
 RemainAfterExit=true
-
-[Install]
-WantedBy=multi-user.target
 EOF
 fi
 
@@ -93,19 +92,7 @@ WantedBy=timers.target
 EOF
 fi
 
-sudo tee "$SHUTDOWN_SCRIPT" >/dev/null <<'EOS'
-#!/usr/bin/env bash
-set -euo pipefail
-SESSION=$1
-tmux has-session -t "$SESSION" 2>/dev/null || exit 0
-tmux send-keys -t "$SESSION" "say Server shutting down in 15 seconds..." C-m
-sleep 15
-tmux send-keys -t "$SESSION" "save-all" C-m
-tmux send-keys -t "$SESSION" "stop" C-m
-EOS
-sudo chmod +x "$SHUTDOWN_SCRIPT"
-
-sudo tee "$START_SCRIPT" >/dev/null <<'EOS'
+sudo tee "$START_SCRIPT" >/dev/null <<EOS
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -120,20 +107,50 @@ fi
 EOS
 sudo chmod +x "$START_SCRIPT"
 
+sudo tee "$SHUTDOWN_SCRIPT" >/dev/null <<EOS
+#!/usr/bin/env bash
+set -euo pipefail
+SESSION="mc-$MC_NAME"
+tmux -L "$MC_USER" has-session -t "$SESSION" 2>/dev/null || exit 0
+tmux -L "$MC_USER" send-keys -t "$SESSION" "say Server shutting down in 15 seconds..." C-m
+sleep 15
+tmux -L "$MC_USER" send-keys -t "$SESSION" "save-all" C-m
+tmux -L "$MC_USER" send-keys -t "$SESSION" "stop" C-m
+while tmux -L "$MC_USER" has-session -t "$SESSION" 2>/dev/null; do
+  sleep 1
+done
+EOS
+sudo chmod +x "$SHUTDOWN_SCRIPT"
+
+sudo tee "$RESTART_SCRIPT" >/dev/null <<EOS
+#!/usr/bin/env bash
+set -euo pipefail
+SESSION="mc-$MC_NAME"
+tmux -L "$MC_USER" has-session -t "$SESSION" 2>/dev/null || exit 0
+tmux -L "$MC_USER" send-keys -t "$SESSION" "say Server restarting in 15 seconds..." C-m
+sleep 15
+tmux -L "$MC_USER" send-keys -t "$SESSION" "save-all" C-m
+tmux -L "$MC_USER" send-keys -t "$SESSION" "stop" C-m
+while tmux -L "$MC_USER" has-session -t "$SESSION" 2>/dev/null; do
+  sleep 1
+done
+EOS
+
+sudo chmod +x "$RESTART_SCRIPT"
 
 sudo systemctl daemon-reexec
 sudo systemctl daemon-reload
 
 if $START_INSTANCE; then
-  sudo systemctl enable --now "$INSTANCE_UNIT"
-  sudo systemctl enable --now "$REBOOT_TIMER"
+  sudo systemctl enable --now "$SERVICE_NAME"
+  sudo systemctl enable --now "$REBOOT_TIMER_NAME"
 
   echo -e "\nInstance \"$MC_NAME\" is ready:"
-  echo "   • Service : sudo systemctl status $INSTANCE_UNIT"
+  echo "   • Service : sudo systemctl status $SERVICE_NAME"
   echo "   • Timer   : systemctl list-timers | grep $MC_NAME"
   echo "   • Console : sudo -u $MC_USER tmux attach -t mc-$MC_NAME"
 else
   echo -e "\nTemplates and shutdown script generated for \"$MC_NAME\""
-  echo "   • To start: sudo systemctl enable --now $INSTANCE_UNIT"
-  echo "   • To check: sudo systemctl status $INSTANCE_UNIT"
+  echo "   • To start: sudo systemctl enable --now $SERVICE_NAME"
+  echo "   • To check: sudo systemctl status $SERVICE_NAME"
 fi
