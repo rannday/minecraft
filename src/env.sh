@@ -17,7 +17,8 @@ export SRV_BASE="$MC_HOME/server"
 
 # Java configuration
 export REQUIRED_JAVA_VERSION="21"
-export JAVA_ARCH="$(dpkg --print-architecture)"   # auto-detect: amd64 / arm64
+JAVA_ARCH="$(dpkg --print-architecture)"
+export JAVA_ARCH
 export JAVA_BIN_PATH="/usr/lib/jvm/temurin-${REQUIRED_JAVA_VERSION}-jdk-${JAVA_ARCH}/bin"
 
 # Default runtime settings (can be overridden)

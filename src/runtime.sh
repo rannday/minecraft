@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2154
 # shellcheck source=src/env.sh
 # shellcheck source=src/utils.sh
 set -euo pipefail
