@@ -10,6 +10,7 @@ set -euo pipefail
 readonly ENV_SH_SOURCED=yes
 
 # Minecraft base configuration
+export MC_NAME="vanilla"
 export MC_USER="minecraft"
 export MC_HOME="/opt/minecraft"
 export SRV_BASE="$MC_HOME/server"
@@ -27,7 +28,7 @@ export MC_GAMEMODE="survival"
 export MC_PVP="true"
 export MC_WHITELIST=""
 
-export MC_PLAYERS_PER_GB=1
+export MC_RAM_RATIO=1
 
 # URL for Mojang manifest
 export MC_VERSION_MANIFEST_URL="https://piston-meta.mojang.com/mc/game/version_manifest.json"

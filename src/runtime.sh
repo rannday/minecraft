@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# shellcheck source=src/env.sh
+# shellcheck source=src/utils.sh
 set -euo pipefail
 trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
 [[ "${BASH_SOURCE[0]}" != "${0}" ]] && { echo "Run, don’t source."; return 1; }
@@ -7,103 +9,63 @@ SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SRC_DIR/env.sh"
 source "$SRC_DIR/utils.sh"
 
-SERVICE_NAME="mc-${MC_GAMEMODE}"
-SESSION_NAME="$SERVICE_NAME"
-SRV_DIR="${SRV_BASE}/${MC_GAMEMODE}"
-JAR="${SRV_DIR}/server.jar"
-JVM_ARGS_FILE="${SRV_DIR}/jvm.args"
-SHUTDOWN_SCRIPT="${SRV_DIR}/mc-shutdown.sh"
-SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-REBOOT_SERVICE="/etc/systemd/system/${SERVICE_NAME}-reboot.service"
-REBOOT_TIMER="/etc/systemd/system/${SERVICE_NAME}-reboot.timer"
-JAVA="${JAVA_BIN_PATH}/java"
-
 print_usage() {
   cat <<EOF
 Usage: $(basename "$0") [options]
 
-Creates/overwrites the systemd unit file only (does NOT enable or start it).
-
 Options:
-  --mode,     -m MODE  Gamemode to set up   (default: ${MC_GAMEMODE})
-  --user,     -u USER  User to run as       (default: ${MC_USER})
-  --srv-dir,  -d DIR   Server working dir   (default: ${SRV_DIR})
-  --jar,      -j FILE  Path to server JAR   (default: ${JAR})
-  --jvm-args, -a FILE  Path to JVM argfile  (default: ${JVM_ARGS_FILE})
-  --help,     -h       Show this help
+  --name,   -n NAME   Instance name (default: \$MC_NAME from env.sh)
+  --user,   -u USER   User to run the service as (default: \$MC_USER)
+  --start             Enable and start the instance immediately
+  --help,   -h
 EOF
 }
 
+START_INSTANCE=false
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --mode|-m)
-      MC_GAMEMODE="$2"
-      SERVICE_NAME="mc-${MC_GAMEMODE}"
-      SESSION_NAME="$SERVICE_NAME"
-      SRV_DIR="${SRV_BASE}/${MC_GAMEMODE}"
-      JAR="${SRV_DIR}/server.jar"
-      JVM_ARGS_FILE="${SRV_DIR}/jvm.args"
-      SHUTDOWN_SCRIPT="${SRV_DIR}/mc-shutdown.sh"
-      SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-      shift ;;
-    --user|-u)     MC_USER="$2"; shift ;;
-       --srv-dir|-d)
-      SRV_DIR="$2"
-      JAR="${SRV_DIR}/server.jar"
-      JVM_ARGS_FILE="${SRV_DIR}/jvm.args"
-      SHUTDOWN_SCRIPT="${SRV_DIR}/mc-shutdown.sh"
-      SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-      shift ;;
-    --jar|-j)      JAR="$2"; shift ;;
-    --jvm-args|-a) JVM_ARGS_FILE="$2"; shift ;;
-    -h|--help)     print_usage; exit 0 ;;
+    --name|-n)   MC_NAME="$2"; shift 2 ;;
+    --user|-u)   MC_USER="$2"; shift 2 ;;
+    --start)     START_INSTANCE=true; shift ;;
+    --help|-h)   print_usage; exit 0 ;;
     *) echo "Unknown option: $1"; print_usage; exit 1 ;;
   esac
-  shift
 done
 
-require_packages tmux
+SRV_DIR="$SRV_BASE/$MC_NAME"
+SHUTDOWN_SCRIPT="$SRV_DIR/mc-shutdown.sh"
+INSTANCE_UNIT="minecraft@${MC_NAME}.service"
+REBOOT_TIMER="minecraft-reboot@${MC_NAME}.timer"
+SYSTEMD_DIR="/etc/systemd/system"
+TEMPLATE_UNIT="$SYSTEMD_DIR/minecraft@.service"
+TEMPLATE_TIMER="$SYSTEMD_DIR/minecraft-reboot@.timer"
 
-[[ -d "$SRV_DIR" ]] || {
-  echo "[error] Server directory not found: $SRV_DIR" >&2
-  exit 1
-}
+[[ -d $SRV_DIR ]] || { echo "[error] No such server dir: $SRV_DIR"; exit 1; }
+command -v java >/dev/null || { echo "[error] java not found"; exit 1; }
 
-command -v "$JAVA" >/dev/null || {
-  echo "[error] Java not found at $JAVA" >&2
-  exit 1
-}
-
-sudo tee "$SHUTDOWN_SCRIPT" >/dev/null <<'EOS'
-#!/usr/bin/env bash
-set -euo pipefail
-SESSION="$1"
-tmux has-session -t "$SESSION" 2>/dev/null || exit 0
-tmux send-keys -t "$SESSION" "say Server shutting down in 15 seconds..." C-m
-sleep 15
-tmux send-keys -t "$SESSION" "save-all" C-m
-tmux send-keys -t "$SESSION" "stop" C-m
-EOS
-
-sudo chmod +x "$SHUTDOWN_SCRIPT"
-
-echo "[systemd] Writing unit file: $SERVICE_FILE"
-sudo tee "$SERVICE_FILE" >/dev/null <<EOF
+if [[ ! -f "$TEMPLATE_UNIT" ]]; then
+  echo "[init] Writing template: $TEMPLATE_UNIT"
+  sudo tee "$TEMPLATE_UNIT" >/dev/null <<EOF
 [Unit]
-Description=Minecraft ${MC_GAMEMODE^} Server
+Description=Minecraft server – %%i
 After=network.target
 
 [Service]
 Type=forking
 User=$MC_USER
-WorkingDirectory=$SRV_DIR
+WorkingDirectory=$SRV_BASE/%%i
 ProtectSystem=full
 ProtectHome=true
 NoNewPrivileges=true
 
-ExecStart=/usr/bin/tmux new-session -s ${SESSION_NAME} -d "${JAVA} @${JVM_ARGS_FILE} -jar ${JAR} nogui"
-ExecStop=${SHUTDOWN_SCRIPT} ${SESSION_NAME}
-ExecStopPost=/usr/bin/tmux kill-session -t ${SESSION_NAME}
+ExecStart=/usr/bin/tmux new-session -s mc-%%i -d /bin/bash -c '\
+  cd "'"$SRV_BASE"'/%%i" && \
+  args=""; [[ -f jvm.args ]] && args="@jvm.args"; \
+  exec /usr/bin/java $args -jar server.jar nogui'
+
+ExecStop=${SRV_BASE}/%%i/mc-shutdown.sh mc-%%i
+ExecStopPost=/usr/bin/tmux kill-session -t mc-%%i
 
 Restart=on-failure
 RestartSec=5
@@ -114,51 +76,50 @@ RemainAfterExit=true
 [Install]
 WantedBy=multi-user.target
 EOF
+fi
 
-echo "[systemd] Writing reboot helper: $REBOOT_SERVICE"
-sudo tee "$REBOOT_SERVICE" >/dev/null <<EOF
+if [[ ! -f "$TEMPLATE_TIMER" ]]; then
+  echo "[init] Writing template timer: $TEMPLATE_TIMER"
+  sudo tee "$TEMPLATE_TIMER" >/dev/null <<EOF
 [Unit]
-Description=Daily reboot of ${SERVICE_NAME}.service
-Requires=${SERVICE_NAME}.service
-After=${SERVICE_NAME}.service
-
-[Service]
-Type=oneshot
-ExecStart=/bin/systemctl restart ${SERVICE_NAME}.service
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-echo "[systemd] Writing reboot timer : $REBOOT_TIMER"
-sudo tee "$REBOOT_TIMER" >/dev/null <<EOF
-[Unit]
-Description=Auto-restart ${MC_GAMEMODE^} server daily at 05:00
+Description=Auto-restart Minecraft %%i daily at 05:00
 After=network.target time-sync.target
 
 [Timer]
 OnCalendar=*-*-* 05:00:00
 Persistent=true
+Unit=minecraft@%%i.service
 
 [Install]
 WantedBy=timers.target
 EOF
+fi
 
+sudo tee "$SHUTDOWN_SCRIPT" >/dev/null <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+SESSION=$1
+tmux has-session -t "$SESSION" 2>/dev/null || exit 0
+tmux send-keys -t "$SESSION" "say Server shutting down in 15 seconds..." C-m
+sleep 15
+tmux send-keys -t "$SESSION" "save-all" C-m
+tmux send-keys -t "$SESSION" "stop" C-m
+EOS
+sudo chmod +x "$SHUTDOWN_SCRIPT"
+
+sudo systemctl daemon-reexec
 sudo systemctl daemon-reload
 
-cat <<INFO
-Unit file created at $SERVICE_FILE ✔
+if $START_INSTANCE; then
+  sudo systemctl enable --now "$INSTANCE_UNIT"
+  sudo systemctl enable --now "$REBOOT_TIMER"
 
-Next steps (manual):
-  # Enable and start the service
-  sudo systemctl enable --now $SERVICE_NAME
-
-  # Enable and start the reboot timer
-  sudo systemctl enable --now ${SERVICE_NAME}-reboot.timer
-
-  # Attach to the console if running
-  sudo -u $MC_USER tmux attach -t $SESSION_NAME
-  # Check running sessions
-  sudo -u $MC_USER tmux ls
-
-INFO
+  echo -e "\nInstance \"$MC_NAME\" is ready:"
+  echo "   • Service : sudo systemctl status $INSTANCE_UNIT"
+  echo "   • Timer   : systemctl list-timers | grep $MC_NAME"
+  echo "   • Console : sudo -u $MC_USER tmux attach -t mc-$MC_NAME"
+else
+  echo -e "\nTemplates and shutdown script generated for \"$MC_NAME\""
+  echo "   • To start: sudo systemctl enable --now $INSTANCE_UNIT"
+  echo "   • To check: sudo systemctl status $INSTANCE_UNIT"
+fi

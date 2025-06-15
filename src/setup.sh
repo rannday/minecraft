@@ -14,27 +14,31 @@ print_usage() {
 Usage: $(basename "$0") [options]
 
 Options:
-  --motd         TEXT   Message of the day
-  --port         NUM    Server port
-  --ram          SIZE   Heap size for -Xms/-Xmx (e.g. 8G, 16384M)
-  --gamemode     MODE   survival | creative | adventure
-  --pvp          BOOL   Enable or disable PvP (default: true)
+  --name         NAME   Server name (default: ${MC_NAME})
+  --user         USER   User to run as (default: ${MC_USER})
+  --motd         TEXT   Message of the day (default: ${MC_MOTD})
+  --port         NUM    Server port (default: ${MC_PORT})
+  --ram          SIZE   Heap size for -Xms/-Xmx (default: ${MC_RAM})
+  --gamemode     MODE   survival | creative | adventure (default: ${MC_GAMEMODE})
+  --pvp          BOOL   Enable or disable PvP (default: ${MC_PVP})
   --whitelist    LIST   Comma-separated player names to pre-fill whitelist
-  --user         USER   Override default MC_USER from env.sh
+  --ram-ratio    NUM    Players per GiB of RAM (default: ${MC_MC_RAM_RATIO})
   --help, -h
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --motd)        MC_MOTD="$2";       shift 2 ;;
-    --port)        MC_PORT="$2";       shift 2 ;;
-    --ram)         MC_RAM="$2";        shift 2 ;;
-    --gamemode)    MC_GAMEMODE="$2";   shift 2 ;;
-    --pvp)         MC_PVP="$2";        shift 2 ;;
-    --whitelist)   MC_WHITELIST="$2";  shift 2 ;;
-    --user)        MC_USER="$2";       shift 2 ;;
-    -h|--help)     print_usage; exit 0 ;;
+    --name)        MC_NAME="$2";         shift 2 ;;
+    --user)        MC_USER="$2";         shift 2 ;;
+    --motd)        MC_MOTD="$2";         shift 2 ;;
+    --port)        MC_PORT="$2";         shift 2 ;;
+    --ram)         MC_RAM="$2";          shift 2 ;;
+    --gamemode)    MC_GAMEMODE="$2";     shift 2 ;;
+    --pvp)         MC_PVP="$2";          shift 2 ;;
+    --whitelist)   MC_WHITELIST="$2";    shift 2 ;;
+    --ram-ratio)   MC_MC_RAM_RATIO="$2"; shift 2 ;;
+    --help|-h)     print_usage;          exit 0 ;;
     *) echo "Unknown option: $1"; print_usage; exit 1 ;;
   esac
 done
@@ -44,14 +48,14 @@ case "$MC_GAMEMODE" in
   *) echo "Invalid --gamemode: $MC_GAMEMODE"; exit 1 ;;
 esac
 
-export SRV_DIR="$SRV_BASE/$MC_GAMEMODE"
+export SRV_DIR="$SRV_BASE/$MC_NAME"
 export SRV_JAR="$SRV_DIR/server.jar"
 export JVM_ARGS_FILE="$SRV_DIR/jvm.args"
-export SERVICE_NAME="mc-${MC_GAMEMODE}"
+export SERVICE_NAME="mc-${MC_NAME}"
 export TMUX_SESSION="$SERVICE_NAME"
 
 # Compute MAX_PLAYERS from RAM + ratio
-players_per_gb="${MC_PLAYERS_PER_GB:-1}"
+MC_RAM_RATIO="${MC_MC_RAM_RATIO:-1}"
 
 if [[ "$MC_RAM" =~ ^([0-9]+)([GgMm])$ ]]; then
   mem=${BASH_REMATCH[1]}
@@ -62,15 +66,15 @@ if [[ "$MC_RAM" =~ ^([0-9]+)([GgMm])$ ]]; then
     mem=$(( mem / 1024 ))
   fi
   (( mem < 1 )) && mem=1
-  (( players_per_gb < 1 )) && players_per_gb=1
+  (( MC_RAM_RATIO < 1 )) && MC_RAM_RATIO=1
 
-  MAX_PLAYERS=$(( mem * players_per_gb ))
+  MAX_PLAYERS=$(( mem * MC_RAM_RATIO ))
   (( MAX_PLAYERS > 100 )) && MAX_PLAYERS=100
 else
   MAX_PLAYERS=10
   echo "WARNING: Could not parse MC_RAM='$MC_RAM'; using fallback MAX_PLAYERS=$MAX_PLAYERS"
 fi
-echo "max-players set to $MAX_PLAYERS (${mem:-?} GiB @ ${players_per_gb} players/GiB)"
+echo "max-players set to $MAX_PLAYERS (${mem:-?} GiB @ ${MC_RAM_RATIO} players/GiB)"
 
 if ! id "$MC_USER" &>/dev/null; then
   sudo adduser --system --home "$MC_HOME" --shell /bin/bash --group "$MC_USER"

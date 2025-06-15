@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# shellcheck source=src/env.sh
+# shellcheck source=src/utils.sh
 set -euo pipefail
 trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
 [[ "${BASH_SOURCE[0]}" != "${0}" ]] && { echo "Run, don’t source."; return 1; }
@@ -6,8 +8,6 @@ trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SRC_DIR/env.sh"        
 source "$SRC_DIR/utils.sh"
-
-require_packages wget gnupg software-properties-common
 
 if [ ! -f /usr/share/keyrings/adoptium.gpg ]; then
   wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public \
@@ -19,8 +19,13 @@ if [ ! -f /etc/apt/sources.list.d/adoptium.list ]; then
     | sudo tee /etc/apt/sources.list.d/adoptium.list
 fi
 
-sudo apt update
-sudo apt install -y temurin-${REQUIRED_JAVA_VERSION}-jdk
+if ! dpkg -s "temurin-${REQUIRED_JAVA_VERSION}-jdk" &>/dev/null; then
+  echo "Installing temurin-${REQUIRED_JAVA_VERSION}-jdk ..."
+  sudo apt-get update -qq
+  sudo apt-get install -y temurin-${REQUIRED_JAVA_VERSION}-jdk
+else
+  echo "temurin-${REQUIRED_JAVA_VERSION}-jdk already installed."
+fi
 
 JAVA_VERSION_OUTPUT=$(java -version 2>&1)
 

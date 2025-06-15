@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
+# shellcheck source=src/env.sh
 set -euo pipefail
 trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
 [[ "${BASH_SOURCE[0]}" != "${0}" ]] && { echo "Run, don’t source."; return 1; }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/env.sh"
+SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SRC_DIR/env.sh"
 
 print_usage() {
   cat <<EOF
@@ -62,8 +63,7 @@ sudo rm -f "/etc/systemd/system/$SERVICE" \
 sudo systemctl daemon-reload
 sudo systemctl reset-failed
 
-if command -v tmux >/dev/null && \
-  sudo -u "$MC_USER" tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
+if sudo -u "$MC_USER" tmux has-session -t "$TMUX_SESSION" 2>/dev/null; then
   echo "Force-killing lingering tmux session"
   sudo -u "$MC_USER" tmux kill-session -t "$TMUX_SESSION"
 fi

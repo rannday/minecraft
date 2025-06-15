@@ -21,25 +21,28 @@ resolve_symlink() {
   echo "$(pwd -P)/$target"
 }
 
-require_packages() {
-  local missing=()
+get_latest_server_meta() {
+  local manifest_url="$MC_VERSION_MANIFEST_URL"
+  local latest_ver
+  local meta_url
 
-  for pkg in "$@"; do
-    if ! dpkg -s "$pkg" &>/dev/null; then
-      missing+=("$pkg")
-    fi
-  done
+  latest_ver=$(curl -s "$manifest_url" | jq -r '.latest.release')
+  meta_url=$(curl -s "$manifest_url" | \
+             jq -r --arg ver "$latest_ver" '.versions[] | select(.id == $ver) | .url')
 
-  if [[ ${#missing[@]} -eq 0 ]]; then
-    echo "[apt] All required packages already installed: $*"
-    return 0
+  if [[ -z "$meta_url" ]]; then
+    echo "Error: could not resolve metadata URL for $latest_ver" >&2
+    return 1
   fi
 
-  echo "[apt] Missing packages: ${missing[*]}"
-  echo "[apt] Running apt update..."
-  sudo apt update
+  local server_url sha1
+  read -r server_url sha1 <<<"$(curl -s "$meta_url" | \
+        jq -r '.downloads.server | "\(.url) \(.sha1)"')"
 
-  echo "[apt] Installing: ${missing[*]}"
-  sudo apt install -y "${missing[@]}"
+  [[ -n "$server_url" && -n "$sha1" ]] || {
+    echo "Error: incomplete server metadata" >&2
+    return 1
+  }
+
+  echo "$latest_ver $server_url $sha1"
 }
-
