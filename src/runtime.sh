@@ -95,10 +95,6 @@ fi
 sudo tee "$START_SCRIPT" >/dev/null <<EOS
 #!/usr/bin/env bash
 set -euo pipefail
-
-INSTANCE_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$INSTANCE_DIR"
-
 if [[ -f jvm.args ]]; then
   exec /usr/bin/java @jvm.args -jar server.jar nogui
 else
