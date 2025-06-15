@@ -29,6 +29,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+command -v java >/dev/null || { echo "Error: java not found"; exit 1; }
 
 SRV_DIR="$SRV_BASE/$MC_NAME"
 SRV_JAR="$SRV_DIR/server.jar"
