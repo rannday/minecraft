@@ -72,6 +72,9 @@ RestartSec=5
 SuccessExitStatus=0 1 143
 TimeoutStopSec=45
 RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target
 EOF
 fi
 
