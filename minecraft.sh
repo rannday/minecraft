@@ -3,26 +3,25 @@
 set -euo pipefail
 trap 'echo "Interrupted. Exiting."; exit 1' INT TERM
 [[ "${BASH_SOURCE[0]}" != "${0}" ]] && { echo "Run, do not source."; return 1; }
+# Require APT-based Linux
+if ! command -v apt-get >/dev/null || ! command -v dpkg >/dev/null; then
+  echo "[FATAL] This script only supports APT-based Linux distributions (Debian/Ubuntu/etc.)." >&2
+  exit 1
+fi
+readonly SYS_ARCH="$(dpkg --print-architecture)"
+# Require sudo for privileged operations
+if ! command -v sudo >/dev/null; then
+  echo "[FATAL] 'sudo' is required but not installed." >&2
+  echo "Install it with: su -c 'apt-get update && apt-get install -y sudo'" >&2
+  exit 1
+fi
 
 readonly SCRIPT_VERSION=0.1
 
 ################################################################################
-SYS_ARCH="$(case "$(uname -m)" in
-  x86_64|amd64)   echo amd64 ;;
-  aarch64|arm64)  echo arm64 ;;
-  armv7l|armv6l)  echo armhf ;;
-  ppc64le)        echo ppc64el ;;
-  s390x)          echo s390x ;;
-  *)              uname -m ;;
-esac)"
-readonly SYS_ARCH
-
-################################################################################
-REQUIRED_JAVA_VERSION="21"
-readonly TEMURIN_JAVA_BIN_PATH="/usr/lib/jvm/temurin-${REQUIRED_JAVA_VERSION}-jdk-${SYS_ARCH}/bin"
-
-################################################################################
 # Minecraft server instance configuration
+readonly REQUIRED_JAVA_VERSION=21
+
 MC_NAME="vanilla"
 MC_USER="minecraft"
 MC_HOME="/srv/minecraft"
@@ -188,9 +187,7 @@ require_packages_apt() {
     fatal "Install them manually or re-run with --install."
   fi
 
-  # Abort on non-Debian systems
-  [[ -f /etc/debian_version ]] \
-    || fatal "Auto-install only supported on Debian/Ubuntu systems."
+  command -v apt-get >/dev/null || fatal "APT not found – this script requires an APT-based Linux distribution."
 
   info "Installing: ${missing[*]}"
   sudo apt-get update -qq
@@ -200,7 +197,6 @@ require_packages_apt() {
 
 ################################################################################
 # Download Minecraft server JAR
-# Not yet implemented for other server types (e.g. ATM10)
 download() {
 
   print_download_help() {
@@ -214,7 +210,7 @@ Usage: $(basename "$0") download [options]
 EOF
   }
 
-  local TEMP type server_url dest user
+  local TEMP server_url dest user
   TEMP=$(getopt -o hd:u: --long help,url:,dest:,user: -n 'download' -- "$@") || return 1
   eval set -- "$TEMP"
 
@@ -237,6 +233,7 @@ EOF
   [[ -d "$dest" ]] || fatal "Destination directory '$dest' does not exist."
   id -u "$user" >/dev/null 2>&1 || fatal "User '$user' not found."
 
+  # Install required packages
   require_packages_apt -i curl jq
 
   info "Destination: $dest, User: $user"
@@ -281,7 +278,7 @@ EOF
     fi
   fi
 
-  # download & (optionally) verify
+  # download & verify
   info "Downloading $(basename "$jar_path") …"
   if ! sudo -u "$user" curl -fLs -o "$jar_path" "$url"; then
     fatal "Download failed from $url"
@@ -300,45 +297,38 @@ EOF
 # End Download function
 
 ################################################################################
+# Install Java
 install() {
+
+  if ensure_java; then
+    info "Java ${REQUIRED_JAVA_VERSION} is already installed."
+    return 0
+  fi
 
   print_install_help() {
     cat <<EOF
 Usage: $(basename "$0") install [options]
 
 Options:
-  --java       Install Temurin Java ${REQUIRED_JAVA_VERSION}
+  --temurin    Install Temurin Java ${REQUIRED_JAVA_VERSION}
+  --oracle     Install Oracle Java ${REQUIRED_JAVA_VERSION} 
+  --openjdk    Install OpenJDK ${REQUIRED_JAVA_VERSION}
   -h, --help   Show this help message
 EOF
   }
 
-  local install_java=false
+  if [[ $# -eq 0 ]]; then
+    error "No install target provided."
+    print_install_help
+    exit 1
+  fi
 
-  # Parse options
-  local TEMP
-  TEMP=$(getopt -o h --long help,java -n 'install' -- "$@") || exit 1
-  eval set -- "$TEMP"
-
-  while true; do
-    case "$1" in
-      --java) install_java=true; shift ;;
-      -h|--help)
-        print_install_help
-        return 0 ;;
-      --) shift; break ;;
-      *)  print_install_help; fatal "Unexpected option $1" ;;
-    esac
-  done
-
-  if "$install_java"; then
-    # Ensure Java's installed and return early if so
-    if ensure_java; then
-      return 0 
-    fi
+  install_temurin() {
+    readonly TEMURIN_JAVA_BIN_PATH="/usr/lib/jvm/temurin-${REQUIRED_JAVA_VERSION}-jdk-${SYS_ARCH}/bin"
 
     info "Installing Temurin Java $REQUIRED_JAVA_VERSION …"
 
-    require_packages_apt -i sudo curl gnupg 
+    require_packages_apt -i curl gnupg 
     local codename repo_file
     codename="$(. /etc/os-release; echo "$VERSION_CODENAME")"
     repo_file="/etc/apt/sources.list.d/adoptium.list"
@@ -351,8 +341,8 @@ EOF
 
     # Repo line
     if ! grep -q "packages.adoptium.net" "$repo_file" 2>/dev/null; then
-      echo "deb [arch=$SYS_ARCH signed-by=/usr/share/keyrings/adoptium.gpg] \
-  https://packages.adoptium.net/artifactory/deb $codename main" \
+      echo "deb [arch=${SYS_ARCH} signed-by=/usr/share/keyrings/adoptium.gpg] \
+      https://packages.adoptium.net/artifactory/deb $codename main" \
         | sudo tee "$repo_file" >/dev/null
     fi
 
@@ -380,13 +370,35 @@ EOF
     fi
 
     info "Temurin Java ${REQUIRED_JAVA_VERSION} is now active."
-  else
-    print_install_help
+  }
+
+  install_oracle() {
+    warn "Not implemented yet"
     return 1
-  fi
-  exit 0
+  }
+
+  install_openjdk() {
+    warn "Not implemented yet"
+    return 1
+  }
+
+  # Parse options
+  local TEMP
+  TEMP=$(getopt -o h --long help,temurin,oracle,openjdk -n 'install' -- "$@") || exit 1
+  eval set -- "$TEMP"
+
+  while true; do
+    case "$1" in
+      --temurin) install_temurin; shift ;;
+      --oracle)  install_oracle;  shift ;;
+      --openjdk) install_openjdk; shift ;;
+      -h|--help) print_install_help; return 0 ;;
+      --) shift; break ;;
+      *) print_install_help; fatal "Unexpected option $1" ;;
+    esac
+  done
 }
-# End Install function
+# End Install Java function
 
 ################################################################################
 uninstall() {
@@ -457,7 +469,8 @@ EOF
   if ! [[ "$MC_PORT" =~ ^[0-9]+$ ]] || (( MC_PORT < 1024 || MC_PORT > 65535 )); then
     fatal "Invalid --port '$MC_PORT'. Must be a number between 1024–65535."
   fi
-  if ss -tln | awk '{print $4}' | grep -qE "(:|\.)${MC_PORT}\$"; then
+  # Check if the port is already in use
+  if ss -tln sport = :$MC_PORT | grep -q LISTEN; then
     fatal "$(cat <<EOF
 Port $MC_PORT is already in use. Choose a different port using --port
 
