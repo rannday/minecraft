@@ -23,7 +23,6 @@ readonly TEMURIN_JAVA_BIN_PATH="/usr/lib/jvm/temurin-${REQUIRED_JAVA_VERSION}-jd
 
 ################################################################################
 # Minecraft server instance configuration
-MC_TYPE="minecraft"
 MC_NAME="vanilla"
 MC_USER="minecraft"
 MC_HOME="/srv/minecraft"
@@ -197,18 +196,18 @@ require_packages_apt() {
   sudo apt-get update -qq
   sudo apt-get install -y "${missing[@]}"
 }
-# End shared functions
+# End shared functions #########################################################
 
 ################################################################################
+# Download Minecraft server JAR
+# Not yet implemented for other server types (e.g. ATM10)
 download() {
 
   print_download_help() {
     cat <<EOF
 Usage: $(basename "$0") download [options]
 
-  -t, --type   TYPE  Type of server to download (default: $MC_TYPE)
-                     Supported types: 'minecraft', not implemented - 'atm10' and others
-       --url   URL   Custom URL to download from (overrides type) 
+       --url   URL   Custom URL for server JAR
   -d, --dest   DIR   Destination directory (default: $MC_INSTANCES/$MC_NAME)
   -u, --user   USER  Run curl as USER (default: $MC_USER)
   -h, --help
@@ -216,12 +215,11 @@ EOF
   }
 
   local TEMP type server_url dest user
-  TEMP=$(getopt -o ht:d:u: --long help,type:,url:,dest:,user: -n 'download' -- "$@") || return 1
+  TEMP=$(getopt -o hd:u: --long help,url:,dest:,user: -n 'download' -- "$@") || return 1
   eval set -- "$TEMP"
 
   while true; do
     case "$1" in
-      -t|--type)  type="$2";  shift 2 ;; 
       --url)      url="$2";   shift 2 ;;
       -d|--dest)  dest="$2";  shift 2 ;;
       -u|--user)  user="$2";  shift 2 ;;
@@ -241,27 +239,18 @@ EOF
 
   require_packages_apt -i curl jq
 
-  info "Type: $type, Destination: $dest, User: $user"
+  info "Destination: $dest, User: $user"
 
   # resolve download URL & expected SHA1
   local latest_ver expected_sha1
   if [[ -n "${url:-}" ]]; then
-    info "--url provided; skipping type logic."
+    info "--url provided; using custom download."
     latest_ver="custom"
     expected_sha1="SKIP"
   else
-    [[ -z "${type:-}" ]] && type="minecraft"
-
-    case "$type" in
-      minecraft)
-        info "Fetching latest vanilla metadata …"
-        read -r latest_ver url expected_sha1 <<<"$(get_latest_server_meta)" || \
-          fatal "Failed to retrieve metadata."
-        ;;
-      *)
-        fatal "Server type '$type' is not supported yet."
-        ;;
-    esac
+    info "Fetching latest vanilla metadata …"
+    read -r latest_ver url expected_sha1 <<<"$(get_latest_server_meta)" || \
+      fatal "Failed to retrieve metadata."
   fi
 
   # determine paths
@@ -552,7 +541,7 @@ EOF
 
   if [[ -z "$latest" ]]; then
     info "No server JAR found — downloading latest vanilla release …"
-    download --type minecraft --dest "$SRV_DIR" --user "$MC_USER"
+    download --dest "$SRV_DIR" --user "$MC_USER"
 
     # Recompute after download
     latest=$(get_latest_jar "$SRV_DIR")
