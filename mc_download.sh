@@ -8,6 +8,10 @@ trap 'warn "Interrupted. Exiting."; exit 1' INT TERM
 source "$BASE_DIR/lib/apt_check.sh"
 apt_requirements_check
 
+set -a
+source "$BASE_DIR/mc.env"
+set +a
+
 ################################################################################
 # Download Minecraft
 ################################################################################
