@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+# shellcheck shell=bash
 [[ "${BASH_SOURCE[0]}" == "${0}" ]] && { echo "Source, do not run.">&2; return 1; }
 
 export REQUIRED_JAVA_VERSION=21

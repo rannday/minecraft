@@ -12,110 +12,47 @@ set -a
 source "$BASE_DIR/mc.env"
 set +a
 
-################################################################################
-# Setup Minecraft
-################################################################################
+source "$BASE_DIR/lib/download.sh"
+source "$BASE_DIR/lib/java.sh"
 
-setup() {
+[[ "$MC_GAMEMODE" =~ ^(survival|creative|adventure)$ ]] || fatal "Invalid gamemode '$MC_GAMEMODE'"
 
-  print_setup_help() {
-    cat <<EOF
-Usage: $(basename "$0") setup [options]
-
-User
-  --user      USER    System user                 (default: $MC_USER)
-  --home      DIR     Home dir                    (default: $MC_HOME)
-
-Instance
-  --name      NAME    Instance name               (default: $MC_NAME)
-  --motd      TEXT    MOTD                        (default: "$MC_MOTD")
-  --port      NUM     TCP port                    (default: $MC_PORT)
-  --ram       SIZE    Heap (-Xms/-Xmx)            (default: $MC_RAM)
-  --gamemode  MODE    survival|creative|adventure (default: $MC_GAMEMODE)
-  --pvp       BOOL    true|false                  (default: $MC_PVP)
-  --whitelist LIST    Comma-sep player list       (default: disabled)
-  --ram-ratio NUM     Players per GiB             (default: $MC_RAM_RATIO)
-EOF
-  }
-
-  # getopt parser
-  local TEMP
-  TEMP=$(getopt -o h --long \
-    help,name:,user:,home:,motd:,port:,ram:,gamemode:,pvp:,whitelist:,ram-ratio: \
-    -n 'setup' -- "$@") || exit 1
-  eval set -- "$TEMP"
-
-  while true; do
-    case "$1" in
-      --name)        MC_NAME="$2";       shift 2 ;;
-      --user)        MC_USER="$2";       shift 2 ;;
-      --home)        MC_HOME="$2";       shift 2 ;;
-      --motd)        MC_MOTD="$2";       shift 2 ;;
-      --port)        MC_PORT="$2";       shift 2 ;;
-      --ram)         MC_RAM="$2";        shift 2 ;;
-      --gamemode)    MC_GAMEMODE="$2";   shift 2 ;;
-      --pvp)         MC_PVP="$2";        shift 2 ;;
-      --whitelist)   MC_WHITELIST="$2";  shift 2 ;;
-      --ram-ratio)   MC_RAM_RATIO="$2";  shift 2 ;;
-      -h|--help)
-        print_setup_help
-        exit 0 ;;
-      --) shift; break ;;
-      *)  
-        print_setup_help
-        fatal "Unexpected option $1" ;;
-    esac
-  done
-
-  ##############################################################################
-  # Gamemode check
-  [[ "$MC_GAMEMODE" =~ ^(survival|creative|adventure)$ ]] \
-    || fatal "Invalid --gamemode '$MC_GAMEMODE'"
-
-  ##############################################################################
-  # Port check
-  if ! [[ "$MC_PORT" =~ ^[0-9]+$ ]] || (( MC_PORT < 1024 || MC_PORT > 65535 )); then
-    fatal "Invalid --port '$MC_PORT'. Must be a number between 1024–65535."
-  fi
-  # Check if the port is already in use
-  if ss -tln sport = :$MC_PORT | grep -q LISTEN; then
-    fatal "$(cat <<EOF
-Port $MC_PORT is already in use. Choose a different port using --port
+if ! [[ "$MC_PORT" =~ ^[0-9]+$ ]] || (( MC_PORT < 1024 || MC_PORT > 65535 )); then
+  fatal "Invalid port '$MC_PORT'. Must be a number between 1024–65535."
+fi
+if ss -tln sport = :$MC_PORT | grep -q LISTEN; then
+  fatal "$(cat <<EOF
+Port $MC_PORT is already in use. Choose a different port using MC_PORT in mc.env
 
 To see what's using the port:
   sudo lsof -iTCP:$MC_PORT -sTCP:LISTEN
   sudo ss -tuln | grep $MC_PORT
 EOF
 )"
-  fi
+fi
 
-  local SRV_DIR="${MC_INSTANCES}/${MC_NAME}"
-  local SRV_JAR="${SRV_DIR}/server.jar"
-  local JVM_ARGS_FILE="${SRV_DIR}/jvm.args"
-  local META_ENV_FILE="${SRV_DIR}/meta.env"
+SRV_DIR="${MC_INSTANCES}/${MC_NAME}"
+SRV_JAR="${SRV_DIR}/server.jar"
+JVM_ARGS_FILE="${SRV_DIR}/jvm.args"
+META_ENV_FILE="${SRV_DIR}/meta.env"
 
-  ##############################################################################
-  # players/GiB -> max-players
-  local mem unit players
-  if [[ "$MC_RAM" =~ ^([0-9]+)([GgMm])$ ]]; then
-    mem="${BASH_REMATCH[1]}"
-    unit="${BASH_REMATCH[2]}"
-    [[ "$unit" =~ [Mm] ]] && mem=$(( mem / 1024 ))
-    (( mem < 1 )) && mem=1
-    (( MC_RAM_RATIO < 1 )) && MC_RAM_RATIO=1
-    players=$(( mem * MC_RAM_RATIO ))
-    (( players > 100 )) && players=100
-  else
-    players=10
-    warn "Could not parse --ram; defaulting max-players=${players}"
-  fi
+players=10
+if [[ "$MC_RAM" =~ ^([0-9]+)([GgMm])$ ]]; then
+  mem="${BASH_REMATCH[1]}"
+  unit="${BASH_REMATCH[2]}"
+  [[ "$unit" =~ [Mm] ]] && mem=$(( mem / 1024 ))
+  (( mem < 1 )) && mem=1
+  (( MC_RAM_RATIO < 1 )) && MC_RAM_RATIO=1
+  players=$(( mem * MC_RAM_RATIO ))
+  (( players > 100 )) && players=100
+else
+  warn "Could not parse MC_RAM; defaulting max-players=${players}"
+fi
 
-  ##############################################################################
-  # Ensure user and directories exist
-  if getent passwd "$MC_USER" >/dev/null 2>&1; then
-    current_home="$(getent passwd "$MC_USER" | cut -d: -f6)"
-    if [[ "$current_home" != "$MC_HOME" ]]; then
-      fatal "$(cat <<EOF
+if getent passwd "$MC_USER" >/dev/null 2>&1; then
+  current_home="$(getent passwd "$MC_USER" | cut -d: -f6)"
+  if [[ "$current_home" != "$MC_HOME" ]]; then
+    fatal "$(cat <<EOF
 User '$MC_USER' already exists with home '$current_home', expected: '$MC_HOME'
 
 Fix it manually using one of the following:
@@ -132,58 +69,41 @@ Fix it manually using one of the following:
       getent group  $MC_USER
 EOF
 )"
-    fi
-    info "Using existing user '$MC_USER' (home: $current_home)"
-  else
-    info "Creating system user '$MC_USER' with home '$MC_HOME'"
-    sudo adduser --system --home "$MC_HOME" --shell /bin/bash --group "$MC_USER"
   fi
-  for dir in "$MC_BIN" "$MC_BACKUPS" "$SRV_DIR"; do
-    if [[ ! -d "$dir" ]]; then
-      sudo mkdir -p "$dir"
-      sudo chown -R "$MC_USER:$MC_USER" "$dir"
-    fi
-  done
+  info "Using existing user '$MC_USER' (home: $current_home)"
+else
+  info "Creating system user '$MC_USER' with home '$MC_HOME'"
+  sudo adduser --system --home "$MC_HOME" --shell /bin/bash --group "$MC_USER"
+fi
 
-  ##############################################################################
-  # Setup Java if needed
-  [[ -x "${TEMURIN_JAVA_BIN_PATH}/java" ]] \
-    || fatal "Required Java ${REQUIRED_JAVA_VERSION} not found at ${TEMURIN_JAVA_BIN_PATH}"
+for dir in "$MC_BIN" "$MC_BACKUPS" "$SRV_DIR"; do
+  if [[ ! -d "$dir" ]]; then
+    sudo mkdir -p "$dir"
+    sudo chown -R "$MC_USER:$MC_USER" "$dir"
+  fi
+done
 
-  ##############################################################################
-  # Ensure a server JAR exists
-  get_latest_jar() { # $1=directory
-    local dir="$1"
-    find "$dir" -maxdepth 1 -name 'minecraft_server_*.jar' | sort -Vr | head -n1
-  }
+[[ -x "${TEMURIN_JAVA_BIN_PATH}/java" ]] || fatal "Required Java ${REQUIRED_JAVA_VERSION} not found at ${TEMURIN_JAVA_BIN_PATH}"
 
-  local latest
+get_latest_jar() { find "$1" -maxdepth 1 -name 'minecraft_server_*.jar' | sort -Vr | head -n1; }
+
+latest=""
+latest=$(get_latest_jar "$SRV_DIR" || true)
+if [[ -z "$latest" ]]; then
+  info "No server JAR found — downloading latest vanilla release …"
+  download "" "$SRV_DIR" "$MC_USER"
   latest=$(get_latest_jar "$SRV_DIR")
+  [[ -z "$latest" ]] && fatal "Download failed: no JAR present in $SRV_DIR"
+else
+  info "Existing server JAR found: $(basename "$latest")"
+fi
 
-  if [[ -z "$latest" ]]; then
-    info "No server JAR found — downloading latest vanilla release …"
-    download --dest "$SRV_DIR" --user "$MC_USER"
+sudo -u "$MC_USER" ln -sf "$(basename "$latest")" "$SRV_JAR"
+sudo -u "$MC_USER" bash -c "echo 'eula=true' > '${SRV_DIR}/eula.txt'"
 
-    # Recompute after download
-    latest=$(get_latest_jar "$SRV_DIR")
-    [[ -z "$latest" ]] && fatal "Download failed: no JAR present in $SRV_DIR"
-  else
-    info "Existing server JAR found: $(basename "$latest")"
-  fi
-
-  ##############################################################################
-  # Setup Minecraft
-
-  # Link server.jar to the newest JAR
-  sudo -u "$MC_USER" ln -sf "$(basename "$latest")" "$SRV_JAR"
-
-  # Accept EULA
-  sudo -u "$MC_USER" bash -c "echo 'eula=true' > '${SRV_DIR}/eula.txt'"
-
-  # Setup server.properties
-  local wl_enabled=false
-  [[ -n "${MC_WHITELIST:-}" ]] && wl_enabled=true
-  sudo -u "$MC_USER" tee "${SRV_DIR}/server.properties" >/dev/null <<EOF
+wl_enabled=false
+[[ -n "${MC_WHITELIST:-}" ]] && wl_enabled=true
+sudo -u "$MC_USER" tee "${SRV_DIR}/server.properties" >/dev/null <<EOF
 enforce-whitelist=${wl_enabled}
 force-gamemode=true
 gamemode=${MC_GAMEMODE}
@@ -195,8 +115,7 @@ white-list=${wl_enabled}
 motd=${MC_MOTD}
 EOF
 
-  # Setup JVM arguments file
-  sudo -u "$MC_USER" tee "$JVM_ARGS_FILE" >/dev/null <<EOF
+sudo -u "$MC_USER" tee "$JVM_ARGS_FILE" >/dev/null <<EOF
 -Xms${MC_RAM}
 -Xmx${MC_RAM}
 -XX:+UseG1GC
@@ -219,8 +138,7 @@ EOF
 -Daikars.new.flags=true
 EOF
 
-  # Setup metadata file
-  cat <<EOF | sudo -u "$MC_USER" tee "$META_ENV_FILE" >/dev/null
+cat <<EOF | sudo -u "$MC_USER" tee "$META_ENV_FILE" >/dev/null
 NAME=$MC_NAME
 PORT=$MC_PORT
 MOTD="$MC_MOTD"
@@ -229,6 +147,5 @@ GAMEMODE=$MC_GAMEMODE
 WHITELIST=$MC_WHITELIST
 EOF
 
-  info "Setup complete — instance files in ${SRV_DIR}"
-  info "Start with: sudo -u ${MC_USER} ${TEMURIN_JAVA_BIN_PATH}/java \$(cat ${JVM_ARGS_FILE}) -jar ${SRV_JAR} nogui"
-}
+info "Setup complete — instance files in ${SRV_DIR}"
+info "Start with: sudo -u ${MC_USER} ${TEMURIN_JAVA_BIN_PATH}/java \$(cat ${JVM_ARGS_FILE}) -jar ${SRV_JAR} nogui"

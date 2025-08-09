@@ -91,7 +91,7 @@ Commands:
   oracle        Install Oracle Java ${REQUIRED_JAVA_VERSION}
   openjdk       Install OpenJDK ${REQUIRED_JAVA_VERSION}
   uninstall     Uninstall the active Java version
-  help,-h,-help,--help
+  -h, --help
 EOF
 }
 
@@ -105,7 +105,7 @@ case "$COMMAND" in
   oracle)    install_oracle "$@" ;;
   openjdk)   install_openjdk "$@" ;;
   uninstall) uninstall_java "$@" ;;
-  help|-h|-help|--help)
+  -h|--help)
     print_usage
     exit 0
     ;;
