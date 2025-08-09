@@ -63,23 +63,27 @@ register_java_alternatives() {
   local java_path="$bin_dir/java"
   local javac_path="$bin_dir/javac"
 
-  [[ -x "$java_path" && -x "$javac_path" ]] || \
-    fatal "Expected binaries not found in $bin_dir"
-
-  # Ensure update-alternatives is available
+  [[ -x "$java_path" && -x "$javac_path" ]] || fatal "Expected binaries not found in $bin_dir"
   command -v update-alternatives >/dev/null || fatal "'update-alternatives' not found"
 
-  # Register if needed
-  if ! update-alternatives --query java 2>/dev/null | grep -q "Value: $java_path"; then
+  if command -v java >/dev/null 2>&1; then
+    local current_java
+    current_java="$(readlink -f "$(command -v java)")"
+    if [[ "$(readlink -f "$java_path")" == "$current_java" ]]; then
+      info "Java already active at $current_java (no changes needed)"
+      return 0
+    fi
+  fi
+
+  if ! update-alternatives --query java 2>/dev/null | awk '/^Alternative: /{print $2}' | grep -Fxq "$java_path"; then
     info "Registering JDK in $bin_dir via update-alternatives …"
     sudo update-alternatives --install /usr/bin/java java "$java_path" 100 \
       --slave /usr/bin/javac javac "$javac_path"
   fi
 
-  # Set as default
-  sudo update-alternatives --set java  "$java_path"
-
+  sudo update-alternatives --set java "$java_path"
   info "JDK in $bin_dir is now the active version."
 }
+
 
 

@@ -15,50 +15,42 @@ source "$BASE_DIR/lib/java.sh"
 ################################################################################
 install_temurin() {
   local TEMURIN_JAVA_BIN_PATH="/usr/lib/jvm/temurin-${REQUIRED_JAVA_VERSION}-jdk-${SYS_ARCH}/bin"
+  local DESIRED_JAVA="${TEMURIN_JAVA_BIN_PATH}/java"
+  local jdk_pkg="temurin-${REQUIRED_JAVA_VERSION}-jdk"
 
   info "Installing Temurin Java $REQUIRED_JAVA_VERSION …"
 
-  require_packages_apt curl gnupg 
+  if [[ -x "$DESIRED_JAVA" ]]; then
+    register_java_alternatives "${TEMURIN_JAVA_BIN_PATH}"
+    ensure_java || fatal "Temurin Java ${REQUIRED_JAVA_VERSION} failed to activate"
+    info "Temurin Java ${REQUIRED_JAVA_VERSION} is now active."
+    return 0
+  fi
+
+  require_packages_apt curl gnupg
   local codename repo_file
   codename="$(. /etc/os-release; echo "$VERSION_CODENAME")"
   repo_file="/etc/apt/sources.list.d/adoptium.list"
 
-  # Key
   if [[ ! -f /usr/share/keyrings/adoptium.gpg ]]; then
     curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
       | gpg --dearmor | sudo tee /usr/share/keyrings/adoptium.gpg >/dev/null
   fi
 
-  # Repo line
   if ! grep -q "packages.adoptium.net" "$repo_file" 2>/dev/null; then
-    echo "deb [arch=${SYS_ARCH} signed-by=/usr/share/keyrings/adoptium.gpg] \
-    https://packages.adoptium.net/artifactory/deb $codename main" \
+    echo "deb [arch=${SYS_ARCH} signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $codename main" \
       | sudo tee "$repo_file" >/dev/null
   fi
 
-  # Check if the java bin path exists
-  if [[ -x "${TEMURIN_JAVA_BIN_PATH}/java" ]]; then
-    register_java_alternatives "${TEMURIN_JAVA_BIN_PATH}"
-  else
-    # Install Temurin JDK (unconditionally)
-    local jdk_pkg="temurin-${REQUIRED_JAVA_VERSION}-jdk"
+  if ! dpkg -s "$jdk_pkg" >/dev/null 2>&1; then
     sudo apt-get update -qq
     sudo apt-get install -y "$jdk_pkg"
   fi
 
-  # Try to validate Java install
-  if ! ensure_java; then
-    # If validation fails, attempt to register manually
-    if [[ -x "${TEMURIN_JAVA_BIN_PATH}/java" ]]; then
-      register_java_alternatives "${TEMURIN_JAVA_BIN_PATH}"
-    else
-      fatal "Expected Java binary not found at ${TEMURIN_JAVA_BIN_PATH}/java"
-    fi
+  [[ -x "$DESIRED_JAVA" ]] || fatal "Expected Java binary not found at ${DESIRED_JAVA}"
+  register_java_alternatives "${TEMURIN_JAVA_BIN_PATH}"
 
-    # Re-check after manual registration
-    ensure_java || fatal "Temurin Java ${REQUIRED_JAVA_VERSION} failed to activate"
-  fi
-
+  ensure_java || fatal "Temurin Java ${REQUIRED_JAVA_VERSION} failed to activate"
   info "Temurin Java ${REQUIRED_JAVA_VERSION} is now active."
   return 0
 }
