@@ -64,6 +64,7 @@ register_java_alternatives() {
 
 ################################################################################
 ensure_temurin() {
+  echo "Checking if active Java is Temurin …"
   [[ -n "${ACTIVE_JAVA_BIN:-}" ]] || return 1
   local vendor
   vendor="$("$ACTIVE_JAVA_BIN" -XshowSettings:properties 2>&1 | awk -F'= ' '/^ {4}java.vendor =/{print $2}')"
