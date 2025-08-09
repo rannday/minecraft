@@ -6,8 +6,8 @@ export MC_VERSION_MANIFEST_URL="https://piston-meta.mojang.com/mc/game/version_m
 
 ################################################################################
 ensure_java() {
-  local java_bin
-  if ! java_bin=$(command -v java 2>/dev/null); then
+  info "Checking for 'java' in PATH …"
+  if ! command -v java >/dev/null 2>&1; then
     warn "No 'java' found in PATH."
     return 1
   fi
@@ -17,6 +17,8 @@ ensure_java() {
 
 #################################################################################
 ensure_java_version() {
+  echo "Checking Java version …"
+  [[ -n "${ACTIVE_JAVA_BIN:-}" ]] || { warn "No active Java binary set."; return 1; }
   local ver_line ver_major
   ver_line="$("$ACTIVE_JAVA_BIN" -version 2>&1 | head -n1)"
   [[ -n "$ver_line" && "$ver_line" == *version* ]] || { warn "'$ACTIVE_JAVA_BIN' did not return a recognizable version string."; return 1; }
