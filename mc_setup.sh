@@ -76,7 +76,7 @@ else
   sudo adduser --system --home "$MC_HOME" --shell /bin/bash --group "$MC_USER"
 fi
 
-for dir in "$MC_BIN" "$MC_BACKUPS" "$SRV_DIR"; do
+for dir in "$MC_BACKUPS" "$SRV_DIR"; do
   if [[ ! -d "$dir" ]]; then
     sudo mkdir -p "$dir"
     sudo chown -R "$MC_USER:$MC_USER" "$dir"
