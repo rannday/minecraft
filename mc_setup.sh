@@ -83,8 +83,6 @@ for dir in "$MC_BIN" "$MC_BACKUPS" "$SRV_DIR"; do
   fi
 done
 
-[[ -x "${TEMURIN_JAVA_BIN_PATH}/java" ]] || fatal "Required Java ${REQUIRED_JAVA_VERSION} not found at ${TEMURIN_JAVA_BIN_PATH}"
-
 get_latest_jar() { find "$1" -maxdepth 1 -name 'minecraft_server_*.jar' | sort -Vr | head -n1; }
 
 latest=""
