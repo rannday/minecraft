@@ -12,6 +12,7 @@ set -a
 source "$BASE_DIR/mc.env"
 set +a
 
+source "$BASE_DIR/lib/minecraft.sh"
 source "$BASE_DIR/lib/download.sh"
 source "$BASE_DIR/lib/java.sh"
 
