@@ -63,7 +63,9 @@ get_latest_server_meta() {
     fatal "Failed to fetch metadata for version $latest_ver"
   fi
 
-  read -r server_url sha1 <<<"$(jq -r '.downloads.server | "\(.url) \(.sha1)"' <<<"$server_info")"
+  read -r server_url sha1 <<<"$(
+    jq -r '[.downloads.server.url // empty, .downloads.server.sha1 // empty] | @tsv' <<<"$server_info"
+  )"
   [[ -n "$server_url" && -n "$sha1" ]] || fatal "Incomplete server metadata for version $latest_ver"
 
   printf '%s\n%s\n%s\n' "$latest_ver" "$server_url" "$sha1"
