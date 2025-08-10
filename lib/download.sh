@@ -22,7 +22,10 @@ download() {
     expected_sha1="SKIP"
   else
     info "Fetching latest vanilla metadata …"
-    read -r latest_ver url expected_sha1 <<<"$(get_latest_server_meta)" || fatal "Failed to retrieve metadata."
+    mapfile -t _meta < <(get_latest_server_meta)
+    latest_ver="${_meta[0]}"
+    url="${_meta[1]}"
+    expected_sha1="${_meta[2]}"
   fi
 
   info "Resolved metadata: version=${latest_ver}, url=${url}, sha1=${expected_sha1}"

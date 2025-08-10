@@ -52,7 +52,7 @@ get_latest_server_meta() {
   local manifest_file
   manifest_file=$(cache_manifest)
 
-  local latest_ver meta_url server_info server_url sha1
+  local latest_ver meta_url server_info
   latest_ver=$(jq -r '.latest.release' <"$manifest_file")
   meta_url=$(jq -r --arg ver "$latest_ver" '.versions[] | select(.id == $ver) | .url' <"$manifest_file")
 
@@ -71,9 +71,11 @@ get_latest_server_meta() {
   dl_keys=$(jq -r '.downloads | keys | join(",")' <<<"$server_info" 2>/dev/null || echo "")
   info "Downloads keys=${dl_keys:-none}"
 
-  read -r server_url sha1 <<<"$(
-    jq -r '[.downloads.server.url // empty, .downloads.server.sha1 // empty] | @tsv' <<<"$server_info"
-  )"
+  # Extract URL + SHA1 as separate lines
+  local output
+  output=$(jq -r '[.downloads.server.url // empty, .downloads.server.sha1 // empty] | @tsv' <<<"$server_info")
+  local server_url sha1
+  IFS=$'\t' read -r server_url sha1 <<<"$output"
 
   if [[ -z "$server_url" || -z "$sha1" ]]; then
     local head
@@ -83,5 +85,6 @@ get_latest_server_meta() {
   fi
 
   info "Server URL resolved"
+  # Only these 3 lines go to stdout
   printf '%s\n%s\n%s\n' "$latest_ver" "$server_url" "$sha1"
 }
