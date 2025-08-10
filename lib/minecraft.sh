@@ -47,7 +47,7 @@ cache_manifest() {
 ################################################################################
 # Return the latest Minecraft server version, download URL, and SHA1 checksum
 get_latest_server_meta() {
-  command -v jq >/dev/null   || fatal "'jq' is required but not installed."
+  command -v jq >/dev/null || fatal "'jq' is required but not installed."
 
   local manifest_file
   manifest_file=$(cache_manifest)
@@ -57,16 +57,31 @@ get_latest_server_meta() {
   meta_url=$(jq -r --arg ver "$latest_ver" '.versions[] | select(.id == $ver) | .url' <"$manifest_file")
 
   [[ -n "$meta_url" ]] || fatal "Could not resolve metadata URL for $latest_ver"
+  info "Latest=$latest_ver"
+  info "Meta URL=$meta_url"
 
-  # Fetch version-specific metadata
-  if ! server_info=$(curl -fsSL --connect-timeout 5 "$meta_url"); then
+  if ! server_info=$(curl -fsSL --connect-timeout 15 --max-time 60 --retry 3 --retry-delay 1 --retry-connrefused \
+        -H 'Accept: application/json' "$meta_url"); then
     fatal "Failed to fetch metadata for version $latest_ver"
   fi
+
+  info "Metadata bytes=${#server_info}"
+
+  local dl_keys
+  dl_keys=$(jq -r '.downloads | keys | join(",")' <<<"$server_info" 2>/dev/null || echo "")
+  info "Downloads keys=${dl_keys:-none}"
 
   read -r server_url sha1 <<<"$(
     jq -r '[.downloads.server.url // empty, .downloads.server.sha1 // empty] | @tsv' <<<"$server_info"
   )"
-  [[ -n "$server_url" && -n "$sha1" ]] || fatal "Incomplete server metadata for version $latest_ver"
 
+  if [[ -z "$server_url" || -z "$sha1" ]]; then
+    local head
+    head=$(printf '%s' "$server_info" | head -c 200 | tr '\n' ' ')
+    warn "Server URL or SHA1 missing; head=${head}"
+    fatal "Incomplete server metadata for version $latest_ver"
+  fi
+
+  info "Server URL resolved"
   printf '%s\n%s\n%s\n' "$latest_ver" "$server_url" "$sha1"
 }
