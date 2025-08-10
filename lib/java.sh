@@ -64,11 +64,8 @@ register_java_alternatives() {
 
 ################################################################################
 ensure_temurin() {
-  info "Checking if active Java is Temurin …"
   [[ -n "${ACTIVE_JAVA_BIN:-}" ]] || return 1
-  local vendor
-  vendor="$("$ACTIVE_JAVA_BIN" -XshowSettings:properties 2>&1 | awk -F'= ' '/^ {4}java.vendor =/{print $2}')"
-  [[ "$vendor" == "Eclipse Adoptium" && "$ACTIVE_JAVA_BIN" == "/usr/lib/jvm/temurin-${REQUIRED_JAVA_VERSION}-jdk-${SYS_ARCH}/bin/java" ]]
+  "$ACTIVE_JAVA_BIN" -version 2>&1 | grep -qi 'temurin'
 }
 
 ################################################################################
