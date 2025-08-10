@@ -147,4 +147,4 @@ WHITELIST=$MC_WHITELIST
 EOF
 
 info "Setup complete — instance files in ${SRV_DIR}"
-#info "Start with: sudo -u ${MC_USER} ${TEMURIN_JAVA_BIN_PATH}/java \$(cat ${JVM_ARGS_FILE}) -jar ${SRV_JAR} nogui"
+info "Start with: sudo -u ${MC_USER} bash -lc 'cd ${MC_INSTANCE}/${MC_NAME} && java @jvm.args -jar server.jar nogui'"
