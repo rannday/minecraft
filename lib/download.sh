@@ -11,7 +11,7 @@ download() {
   [[ -d "$dest" ]] || fatal "Destination directory '$dest' does not exist."
   id -u "$user" >/dev/null 2>&1 || fatal "User '$user' not found."
 
-  require_packages_apt -i curl jq
+  require_packages_apt curl jq
 
   info "Destination: $dest, User: $user"
 
