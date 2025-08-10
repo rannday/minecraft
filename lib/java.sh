@@ -29,7 +29,7 @@ ensure_java_version() {
     ver_major="$(awk -F\" '{print $2}' <<<"$ver_line" | cut -d. -f1)"
   fi
   (( ver_major == REQUIRED_JAVA_VERSION )) || { warn "Java found at $ACTIVE_JAVA_BIN, but version is $ver_major — expected $REQUIRED_JAVA_VERSION."; return 1; }
-  info "Java $ver_major found at $ACTIVE_JAVA_BIN (OK)"
+  info "Java $ver_major found at $ACTIVE_JAVA_BIN"
   return 0
 }
 
@@ -77,7 +77,7 @@ install_temurin() {
   info "Installing Temurin Java $REQUIRED_JAVA_VERSION …"
 
   if ensure_java && ensure_java_version && ensure_temurin; then
-    info "Temurin Java ${REQUIRED_JAVA_VERSION} already active at ${ACTIVE_JAVA_BIN} (OK)"
+    info "Temurin Java ${REQUIRED_JAVA_VERSION} already active at ${ACTIVE_JAVA_BIN}"
     return 0
   fi
 

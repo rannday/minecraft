@@ -147,4 +147,4 @@ WHITELIST=$MC_WHITELIST
 EOF
 
 info "Setup complete — instance files in ${SRV_DIR}"
-info "Start with: sudo -u ${MC_USER} bash -lc 'cd ${MC_INSTANCE}/${MC_NAME} && java @jvm.args -jar server.jar nogui'"
+info "Start with: sudo -u ${MC_USER} bash -lc 'cd ${MC_INSTANCES}/${MC_NAME} && java @jvm.args -jar server.jar nogui'"
