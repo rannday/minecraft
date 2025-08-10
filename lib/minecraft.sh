@@ -35,7 +35,7 @@ cache_manifest() {
 
   # Download only if modified since last cached version
   if curl -fsSL -z "$manifest_file" -o "$manifest_file" "$MC_VERSION_MANIFEST_URL"; then
-    info "Manifest cached at $manifest_file"
+    info "Manifest cached at $manifest_file" >&2
   else
     warn "Failed to update manifest; using cached version if available."
   fi
